@@ -1,0 +1,32 @@
+# Fly.io app configuration — see DEPLOY.md for the full setup walkthrough.
+#
+# IMPORTANT: `app` names are globally unique across all Fly.io users. Change the placeholder below
+# to something unique before your first `fly launch` / `fly deploy` (e.g. "bonsplit-kwj-1234").
+app = "bonsplit-kwj-4471"
+primary_region = "ams" # Amsterdam — pick whichever Fly region (`fly platform regions`) is closest to you
+
+[build]
+
+[env]
+  # Absolute paths under the mounted volume (see [[mounts]] below) so the SQLite database and
+  # uploaded receipts survive restarts and redeploys — Fly containers themselves are ephemeral.
+  ConnectionStrings__DefaultConnection = "Data Source=/data/privateexpenses.db"
+  ReceiptStorage__RootPath = "/data/uploads"
+  DataProtection__KeyRingPath = "/data/keys"
+  ReceiptParsing__Provider = "Development"
+
+[[mounts]]
+  source = "bonsplit_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

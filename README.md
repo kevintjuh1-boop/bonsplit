@@ -78,6 +78,12 @@ By default the app runs with `ReceiptParsing:Provider = Development`, which mean
 will always show a friendly "kon niet worden uitgelezen" message and route you to manual entry — the app
 is fully usable this way, with no AI configured at all. See below to enable real AI parsing.
 
+### Deploying so the three of you can use it over the internet
+
+See [DEPLOY.md](DEPLOY.md) for a full walkthrough of deploying to Fly.io (persistent storage for the
+database and receipts, a shared password gate since the app itself has no login, HTTPS). A `Dockerfile`
+and `fly.toml` are included and ready to use.
+
 ### Running the tests
 
 ```bash
