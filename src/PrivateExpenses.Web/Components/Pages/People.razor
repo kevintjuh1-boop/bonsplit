@@ -1,0 +1,152 @@
+@page "/personen"
+@using PrivateExpenses.Application.Exceptions
+@inject IPersonService PersonService
+
+<PageTitle>Personen</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Personen</h1>
+        <p class="page-subtitle">Beheer wie er meedoet aan de gezamenlijke uitgaven</p>
+    </div>
+    <button type="button" class="btn btn-primary" @onclick="StartCreate">
+        <Icon Name="plus" Size="18" /> Persoon toevoegen
+    </button>
+</div>
+
+@if (_errorMessage is not null)
+{
+    <div class="banner banner-danger" style="margin-bottom:16px;">
+        <Icon Name="alert-triangle" Size="18" /> <span>@_errorMessage</span>
+    </div>
+}
+
+@if (_editing is not null)
+{
+    <div class="card card-padded" style="max-width:480px;margin-bottom:20px;">
+        <div class="card-header"><span class="card-title">@(_editingId is null ? "Nieuwe persoon" : "Persoon bewerken")</span></div>
+        <div class="stack">
+            <div class="field">
+                <label class="field-label" for="person-name">Naam</label>
+                <input id="person-name" class="input" @bind="_editing.Name" @bind:event="oninput" />
+            </div>
+            <div class="field">
+                <span class="field-label">Kleur</span>
+                <div class="person-row" style="flex-wrap:wrap;">
+                    @foreach (var key in PersonColorPalette.AvailableKeys)
+                    {
+                        var selected = _editing.ColorKey == key;
+                        <button type="button" class="person-quick @(selected ? "selected" : "")"
+                                style="@(selected ? PersonColorPalette.SolidStyle(key) : PersonColorPalette.AvatarStyle(key))"
+                                @onclick="() => _editing.ColorKey = key">
+                            @if (selected)
+                            {
+                                <Icon Name="check" Size="14" />
+                            }
+                        </button>
+                    }
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button type="button" class="btn btn-secondary" @onclick="CancelEdit">Annuleren</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveAsync">Opslaan</button>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="card">
+    <div class="stack" style="gap:0;">
+        @foreach (var person in _people)
+        {
+            <a href="@($"/personen/{person.Id}")" class="list-row">
+                <PersonAvatar Initial="@person.Initial" ColorKey="@person.ColorKey" Name="@person.Name" Size="md" />
+                <span class="list-row-main">
+                    <span class="list-row-title">@person.Name</span>
+                    <span class="list-row-subtitle">@(person.IsActive ? "Actief" : "Gedeactiveerd")</span>
+                </span>
+                <button type="button" class="btn btn-ghost btn-sm" @onclick="() => StartEdit(person)" @onclick:stopPropagation="true">
+                    <Icon Name="pencil" Size="14" />
+                </button>
+                <button type="button" class="btn @(person.IsActive ? "btn-ghost" : "btn-secondary") btn-sm" @onclick="() => ToggleActiveAsync(person)" @onclick:stopPropagation="true">
+                    @(person.IsActive ? "Deactiveren" : "Activeren")
+                </button>
+            </a>
+        }
+    </div>
+</div>
+
+@code {
+    private List<Person> _people = [];
+    private EditModel? _editing;
+    private Guid? _editingId;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _people = await PersonService.GetAllAsync(includeInactive: true);
+    }
+
+    private void StartCreate()
+    {
+        _editingId = null;
+        _editing = new EditModel { Name = "", ColorKey = PersonColorPalette.AvailableKeys.First() };
+        _errorMessage = null;
+    }
+
+    private void StartEdit(Person person)
+    {
+        _editingId = person.Id;
+        _editing = new EditModel { Name = person.Name, ColorKey = person.ColorKey };
+        _errorMessage = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editing = null;
+        _editingId = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editing is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_editingId is { } id)
+            {
+                await PersonService.UpdateAsync(id, _editing.Name, _editing.ColorKey);
+            }
+            else
+            {
+                await PersonService.CreateAsync(_editing.Name, _editing.ColorKey);
+            }
+
+            _editing = null;
+            _editingId = null;
+            _errorMessage = null;
+            await ReloadAsync();
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private async Task ToggleActiveAsync(Person person)
+    {
+        await PersonService.SetActiveAsync(person.Id, !person.IsActive);
+        await ReloadAsync();
+    }
+
+    private sealed class EditModel
+    {
+        public string Name { get; set; } = "";
+        public string ColorKey { get; set; } = "";
+    }
+}

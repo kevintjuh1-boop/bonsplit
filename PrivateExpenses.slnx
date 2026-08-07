@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PrivateExpenses.Application/PrivateExpenses.Application.csproj" />
+    <Project Path="src/PrivateExpenses.Domain/PrivateExpenses.Domain.csproj" />
+    <Project Path="src/PrivateExpenses.Infrastructure/PrivateExpenses.Infrastructure.csproj" />
+    <Project Path="src/PrivateExpenses.Web/PrivateExpenses.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PrivateExpenses.IntegrationTests/PrivateExpenses.IntegrationTests.csproj" />
+    <Project Path="tests/PrivateExpenses.UnitTests/PrivateExpenses.UnitTests.csproj" />
+  </Folder>
+</Solution>

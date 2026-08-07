@@ -1,0 +1,49 @@
+@using PrivateExpenses.Domain.Entities
+@using PrivateExpenses.Web.Support
+
+<div class="person-row" style="flex-wrap:wrap;">
+    @if (ShowEveryone)
+    {
+        <button type="button" class="pill-filter @(AllSelected ? "active" : "")" @onclick="SelectAll">
+            Iedereen
+        </button>
+    }
+    @foreach (var person in People)
+    {
+        var selected = SelectedIds.Contains(person.Id);
+        <button type="button" class="person-chip @(selected ? "selected" : "")"
+                style="@(selected ? PersonColorPalette.SolidStyle(person.ColorKey) : "")"
+                @onclick="() => Toggle(person.Id)">
+            <span class="avatar avatar-xs" style="@(selected ? "background:rgba(255,255,255,.28);color:white;" : PersonColorPalette.AvatarStyle(person.ColorKey))">@person.Initial</span>
+            @person.Name
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<Person> People { get; set; } = [];
+    [Parameter] public HashSet<Guid> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<HashSet<Guid>> SelectedIdsChanged { get; set; }
+    [Parameter] public bool ShowEveryone { get; set; } = true;
+
+    private bool AllSelected => People.Count > 0 && People.All(p => SelectedIds.Contains(p.Id));
+
+    private async Task Toggle(Guid id)
+    {
+        var next = new HashSet<Guid>(SelectedIds);
+        if (!next.Remove(id))
+        {
+            next.Add(id);
+        }
+
+        SelectedIds = next;
+        await SelectedIdsChanged.InvokeAsync(next);
+    }
+
+    private async Task SelectAll()
+    {
+        var next = AllSelected ? [] : People.Select(p => p.Id).ToHashSet();
+        SelectedIds = next;
+        await SelectedIdsChanged.InvokeAsync(next);
+    }
+}

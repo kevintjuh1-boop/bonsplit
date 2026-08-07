@@ -1,0 +1,121 @@
+@page "/personen/{Id:guid}"
+@inject IPersonService PersonService
+@inject IBalanceService BalanceService
+@inject IExpenseService ExpenseService
+@inject ISettlementService SettlementService
+
+<PageTitle>Persoon</PageTitle>
+
+@if (_loading)
+{
+    <p class="text-muted">Laden…</p>
+}
+else if (_person is null)
+{
+    <div class="card">
+        <EmptyState IconName="alert-triangle" Title="Persoon niet gevonden" Description="Deze persoon bestaat niet (meer)." />
+    </div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <a href="/personen" class="text-muted text-sm" style="display:inline-flex;align-items:center;gap:4px;margin-bottom:6px;">
+                <Icon Name="chevron-left" Size="14" /> Terug naar personen
+            </a>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <PersonAvatar Initial="@_person.Initial" ColorKey="@_person.ColorKey" Name="@_person.Name" Size="lg" />
+                <h1 class="page-title">@_person.Name</h1>
+            </div>
+        </div>
+    </div>
+
+    @if (_balance is not null)
+    {
+        <div class="grid grid-stats" style="margin-bottom:20px;">
+            <div class="stat-tile">
+                <span class="stat-tile-label">Totaal voorgeschoten</span>
+                <span class="stat-tile-value">@MoneyFormatter.Format(_balance.TotalPaidCents)</span>
+            </div>
+            <div class="stat-tile">
+                <span class="stat-tile-label">Eigen aandeel</span>
+                <span class="stat-tile-value">@MoneyFormatter.Format(_balance.TotalOwedCents)</span>
+            </div>
+            <div class="stat-tile">
+                <span class="stat-tile-label">Nog te ontvangen</span>
+                <span class="stat-tile-value positive">@MoneyFormatter.Format(Math.Max(_balance.NetBalanceCents, 0))</span>
+            </div>
+            <div class="stat-tile">
+                <span class="stat-tile-label">Nog te betalen</span>
+                <span class="stat-tile-value negative">@MoneyFormatter.Format(Math.Max(-_balance.NetBalanceCents, 0))</span>
+            </div>
+        </div>
+    }
+
+    <div class="card card-padded">
+        <div class="card-header"><span class="card-title">Recente transacties</span></div>
+        @if (_recentActivity.Count == 0)
+        {
+            <p class="text-muted text-sm">Nog geen transacties.</p>
+        }
+        else
+        {
+            <div class="stack" style="gap:0;">
+                @foreach (var activity in _recentActivity)
+                {
+                    <div class="list-row">
+                        <span class="list-row-icon"><Icon Name="@activity.Icon" Size="16" /></span>
+                        <span class="list-row-main">
+                            <span class="list-row-title">@activity.Title</span>
+                            <span class="list-row-subtitle">@activity.Date.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture)</span>
+                        </span>
+                        <span class="list-row-amount">@MoneyFormatter.Format(activity.AmountCents)</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _loading = true;
+    private Person? _person;
+    private PersonBalanceDto? _balance;
+    private List<ActivityRow> _recentActivity = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        _person = await PersonService.GetByIdAsync(Id);
+        if (_person is not null)
+        {
+            _balance = await BalanceService.GetPersonBalanceAsync(Id);
+
+            var expenses = await ExpenseService.GetListAsync(new ExpenseFilter { InvolvesPersonId = Id, Sort = ExpenseFilter.SortOption.DateDescending });
+            var settlements = await SettlementService.GetHistoryAsync();
+
+            var activity = expenses.Take(10)
+                .Select(e => new ActivityRow("receipt", e.MerchantName, e.ExpenseDate, e.TotalCents))
+                .Concat(settlements
+                    .Where(s => s.FromPersonId == Id || s.ToPersonId == Id)
+                    .Take(10)
+                    .Select(s => new ActivityRow(
+                        "arrow-swap",
+                        s.FromPersonId == Id ? $"Betaald aan {s.ToPerson?.Name}" : $"Ontvangen van {s.FromPerson?.Name}",
+                        s.SettlementDate,
+                        s.AmountCents)))
+                .OrderByDescending(a => a.Date)
+                .Take(10)
+                .ToList();
+
+            _recentActivity = activity;
+        }
+
+        _loading = false;
+    }
+
+    private sealed record ActivityRow(string Icon, string Title, DateOnly Date, long AmountCents);
+}

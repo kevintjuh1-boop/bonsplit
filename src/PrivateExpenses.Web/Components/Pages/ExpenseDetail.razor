@@ -1,0 +1,172 @@
+@page "/uitgaven/{Id:guid}"
+@using PrivateExpenses.Application.Exceptions
+@inject IExpenseService ExpenseService
+@inject NavigationManager Navigation
+
+<PageTitle>Uitgave</PageTitle>
+
+@if (_loading)
+{
+    <p class="text-muted">Laden…</p>
+}
+else if (_expense is null)
+{
+    <div class="card">
+        <EmptyState IconName="alert-triangle" Title="Uitgave niet gevonden" Description="Deze uitgave bestaat niet (meer)." />
+    </div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            <a href="/uitgaven" class="text-muted text-sm" style="display:inline-flex;align-items:center;gap:4px;margin-bottom:6px;">
+                <Icon Name="chevron-left" Size="14" /> Terug naar uitgaven
+            </a>
+            <h1 class="page-title">@_expense.MerchantName</h1>
+            <p class="page-subtitle">@_expense.ExpenseDate.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture)</p>
+        </div>
+        <div style="display:flex;gap:8px;">
+            @if (_canEditInline)
+            {
+                <a href="@($"/uitgaven/{Id}/bewerken")" class="btn btn-secondary">
+                    <Icon Name="pencil" Size="16" /> Bewerken
+                </a>
+            }
+            <button type="button" class="btn btn-danger" @onclick="() => _showDeleteConfirm = true">
+                <Icon Name="trash" Size="16" /> Verwijderen
+            </button>
+        </div>
+    </div>
+
+    @if (_showDeleteConfirm)
+    {
+        <div class="banner banner-warning" style="margin-bottom:20px;justify-content:space-between;align-items:center;">
+            <span><Icon Name="alert-triangle" Size="16" /> Deze uitgave wordt verwijderd en telt daarna niet meer mee in de saldi.</span>
+            <div style="display:flex;gap:8px;">
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _showDeleteConfirm = false">Annuleren</button>
+                <button type="button" class="btn btn-danger btn-sm" @onclick="DeleteAsync">Ja, verwijderen</button>
+            </div>
+        </div>
+    }
+
+    <div class="grid grid-2" style="margin-bottom:20px;">
+        <div class="card card-padded">
+            <div class="card-header"><span class="card-title">Overzicht</span></div>
+            <div class="stack" style="gap:10px;">
+                <div style="display:flex;justify-content:space-between;">
+                    <span class="text-muted text-sm">Totaal</span>
+                    <span style="font-weight:800;">@MoneyFormatter.Format(_expense.TotalCents)</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;">
+                    <span class="text-muted text-sm">Categorie</span>
+                    <span class="text-sm">@(_expense.CategoryName ?? "Geen categorie")</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span class="text-muted text-sm">Betaald door</span>
+                    <span class="person-row">
+                        @foreach (var payment in _expense.Payments)
+                        {
+                            <PersonAvatar Initial="@payment.PersonInitial" ColorKey="@payment.PersonColorKey" Name="@payment.PersonName" Size="sm" />
+                        }
+                    </span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_expense.Notes))
+                {
+                    <div>
+                        <span class="text-muted text-sm">Notitie</span>
+                        <p class="text-sm" style="margin-top:4px;">@_expense.Notes</p>
+                    </div>
+                }
+                @if (_expense.ReceiptDocumentIds.Count > 0)
+                {
+                    <a href="@($"/bon/{_expense.ReceiptDocumentIds[0]}")" class="btn btn-secondary btn-sm" style="align-self:flex-start;">
+                        <Icon Name="file-text" Size="14" /> Bon bekijken
+                    </a>
+                }
+            </div>
+        </div>
+
+        <div class="card card-padded">
+            <div class="card-header"><span class="card-title">Verdeling per persoon</span></div>
+            <div class="stack" style="gap:10px;">
+                @foreach (var person in _expense.PersonTotals)
+                {
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <PersonAvatar Initial="@person.PersonInitial" ColorKey="@person.PersonColorKey" Name="@person.PersonName" Size="sm" />
+                        <span class="text-sm" style="font-weight:600;flex:1;">@person.PersonName</span>
+                        <span class="text-sm text-muted">betaald @MoneyFormatter.Format(person.PaidCents) · aandeel @MoneyFormatter.Format(person.OwedCents)</span>
+                        <span class="badge @(person.NetCents > 0 ? "badge-success" : person.NetCents < 0 ? "badge-danger" : "badge-neutral")">
+                            @MoneyFormatter.FormatSigned(person.NetCents)
+                        </span>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-padded" style="padding-bottom:0;">
+            <span class="card-title">Regels</span>
+        </div>
+        <div class="stack" style="gap:0;margin-top:8px;">
+            @foreach (var item in _expense.Items)
+            {
+                <div class="list-row" style="align-items:flex-start;">
+                    <span class="list-row-main">
+                        <span class="list-row-title">
+                            @item.Description
+                            @if (item.IsDiscount)
+                            {
+                                <span class="badge badge-warning" style="margin-left:6px;">Korting</span>
+                            }
+                            @if (item.IsDeposit)
+                            {
+                                <span class="badge badge-primary" style="margin-left:6px;">Statiegeld</span>
+                            }
+                        </span>
+                        <span class="person-row" style="margin-top:6px;flex-wrap:wrap;">
+                            @foreach (var share in item.Shares)
+                            {
+                                <span class="badge badge-neutral">
+                                    <PersonAvatar Initial="@share.PersonInitial" ColorKey="@share.PersonColorKey" Name="@share.PersonName" Size="xs" />
+                                    @MoneyFormatter.Format(share.AmountCents)
+                                </span>
+                            }
+                        </span>
+                    </span>
+                    <span class="list-row-amount">@MoneyFormatter.Format(item.TotalCents)</span>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ExpenseDetailDto? _expense;
+    private bool _loading = true;
+    private bool _showDeleteConfirm;
+
+    private bool _canEditInline => _expense is { Items.Count: 1 } && _expense.Payments.Count == 1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _expense = await ExpenseService.GetDetailAsync(Id);
+        _loading = false;
+    }
+
+    private async Task DeleteAsync()
+    {
+        try
+        {
+            await ExpenseService.SoftDeleteAsync(Id);
+            Navigation.NavigateTo("/uitgaven");
+        }
+        catch (ExpenseValidationException)
+        {
+            _showDeleteConfirm = false;
+        }
+    }
+}

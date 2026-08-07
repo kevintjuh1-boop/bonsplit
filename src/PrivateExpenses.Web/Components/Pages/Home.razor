@@ -1,0 +1,206 @@
+@page "/"
+@using PrivateExpenses.Web.Services
+@inject IPersonService PersonService
+@inject IExpenseService ExpenseService
+@inject IBalanceService BalanceService
+@inject ViewAsState ViewAs
+@inject NavigationManager Navigation
+
+<PageTitle>Dashboard</PageTitle>
+
+@if (_loading)
+{
+    <p class="text-muted">Laden…</p>
+}
+else
+{
+    <div class="mobile-hero">
+        <div class="page-header" style="margin-bottom:14px;">
+            <div>
+                <h1 class="page-title">Dashboard</h1>
+                <p class="page-subtitle">Overzicht van gezamenlijke uitgaven en saldi</p>
+            </div>
+            <a href="/uitgaven/nieuw" class="btn btn-primary hide-on-mobile-hero">
+                <Icon Name="plus" Size="18" />
+                Bon toevoegen
+            </a>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span class="text-sm" style="font-weight:600;">Bekijk als</span>
+            <div class="person-row" style="flex-wrap:wrap;">
+                @foreach (var person in _people)
+                {
+                    var selected = person.Id == ViewAs.CurrentPersonId;
+                    <button type="button" class="person-chip @(selected ? "selected" : "")"
+                            style="@(selected ? PersonColorPalette.SolidStyle(person.ColorKey) : "")"
+                            @onclick="() => SelectViewAs(person.Id)">
+                        <span class="avatar avatar-xs" style="@(selected ? "background:rgba(255,255,255,.28);color:white;" : PersonColorPalette.AvatarStyle(person.ColorKey))">@person.Initial</span>
+                        @person.Name
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    @if (!_hasAnyExpenses)
+    {
+        <div class="card">
+            <EmptyState IconName="receipt" Title="Nog geen uitgaven" Description="Upload je eerste bon om te beginnen, of voer een uitgave handmatig in.">
+                <a href="/uitgaven/nieuw" class="btn btn-primary">
+                    <Icon Name="plus" Size="18" />
+                    Bon toevoegen
+                </a>
+            </EmptyState>
+        </div>
+    }
+    else
+    {
+        <div class="hero-float-card grid grid-2" style="margin-bottom:16px;">
+            <div class="hero-stat">
+                <span class="hero-stat-label">Nog te ontvangen</span>
+                <span class="hero-stat-value positive">@MoneyFormatter.Format(Math.Max(_selectedBalance?.NetBalanceCents ?? 0, 0))</span>
+                <span class="hero-stat-sub">Totaal van anderen</span>
+            </div>
+            <div class="hero-stat">
+                <span class="hero-stat-label">Nog te betalen</span>
+                <span class="hero-stat-value negative">@MoneyFormatter.Format(Math.Max(-(_selectedBalance?.NetBalanceCents ?? 0), 0))</span>
+                <span class="hero-stat-sub">Aan anderen</span>
+            </div>
+        </div>
+
+        <div class="grid grid-stats" style="margin-bottom:20px;">
+            <div class="stat-tile">
+                <span class="stat-tile-label">Deze maand</span>
+                <span class="stat-tile-value">@MoneyFormatter.Format(_monthTotalCents)</span>
+            </div>
+            <div class="stat-tile">
+                <span class="stat-tile-label">Mijn aandeel</span>
+                <span class="stat-tile-value">@MoneyFormatter.Format(_selectedBalance?.TotalOwedCents ?? 0)</span>
+            </div>
+            <div class="stat-tile">
+                <span class="stat-tile-label">Voorgeschoten</span>
+                <span class="stat-tile-value">@MoneyFormatter.Format(_selectedBalance?.TotalPaidCents ?? 0)</span>
+            </div>
+        </div>
+
+        <div class="card card-padded" style="margin-bottom:20px;">
+            <div class="card-header">
+                <span class="card-title">Recente uitgaven</span>
+                <a href="/uitgaven" class="btn btn-ghost btn-sm">Alles bekijken</a>
+            </div>
+            @if (_recentExpenses.Count == 0)
+            {
+                <p class="text-muted text-sm">Nog geen uitgaven.</p>
+            }
+            else
+            {
+                <div class="stack" style="gap:0;">
+                    @foreach (var expense in _recentExpenses)
+                    {
+                        <a href="@($"/uitgaven/{expense.Id}")" class="list-row">
+                            <span class="list-row-icon" style="@CategoryColorPalette.BackgroundStyle(expense.CategoryIconKey)">
+                                <Icon Name="@(expense.CategoryIconKey ?? "receipt")" Size="18" />
+                            </span>
+                            <span class="list-row-main">
+                                <span class="list-row-title">@expense.MerchantName</span>
+                                <span class="list-row-subtitle">
+                                    @expense.ExpenseDate.ToString("d MMMM", MoneyFormatter.DutchCulture)
+                                    @if (expense.PaidBy.Count > 0)
+                                    {
+                                        <text> · Betaald door @string.Join(", ", expense.PaidBy.Select(p => p.Name))</text>
+                                    }
+                                </span>
+                            </span>
+                            <span class="badge badge-success hide-on-narrow" style="flex-shrink:0;">Volledig verdeeld</span>
+                            <span class="list-row-amount">@MoneyFormatter.Format(expense.TotalCents)</span>
+                        </a>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="card card-padded" style="margin-bottom:20px;">
+            <div class="card-header">
+                <span class="card-title">Openstaande saldi</span>
+                <a href="/saldi" class="btn btn-ghost btn-sm">Alles bekijken</a>
+            </div>
+            @if (_suggestedDebts.Count == 0)
+            {
+                <p class="text-muted text-sm">Alles is verrekend. Niemand hoeft iemand nog te betalen.</p>
+            }
+            else
+            {
+                <div class="stack" style="gap:10px;">
+                    @foreach (var debt in _suggestedDebts)
+                    {
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;row-gap:4px;">
+                            <span style="display:flex;align-items:center;gap:8px;min-width:0;">
+                                <PersonAvatar Initial="@debt.FromInitial" ColorKey="@debt.FromColorKey" Name="@debt.FromName" Size="sm" />
+                                <span class="text-sm" style="font-weight:600;">@debt.FromName</span>
+                                <Icon Name="arrow-right" Size="16" />
+                                <PersonAvatar Initial="@debt.ToInitial" ColorKey="@debt.ToColorKey" Name="@debt.ToName" Size="sm" />
+                                <span class="text-sm" style="font-weight:600;">@debt.ToName</span>
+                            </span>
+                            <span style="margin-left:auto;font-weight:800;">@MoneyFormatter.Format(debt.AmountCents)</span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <a href="/uitgaven/nieuw" class="btn btn-primary btn-block show-on-mobile-hero">
+            <Icon Name="plus" Size="18" />
+            Nieuwe uitgave toevoegen
+        </a>
+    }
+}
+
+@code {
+    private List<Person> _people = [];
+    private List<ExpenseListItemDto> _recentExpenses = [];
+    private List<SuggestedDebtDto> _suggestedDebts = [];
+    private PersonBalanceDto? _selectedBalance;
+    private long _monthTotalCents;
+    private bool _hasAnyExpenses;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _people = await PersonService.GetAllAsync();
+
+        if (ViewAs.CurrentPersonId is null)
+        {
+            var defaultPerson = _people.FirstOrDefault(p => p.Name == "Kevin") ?? _people.FirstOrDefault();
+            if (defaultPerson is not null)
+            {
+                ViewAs.SetCurrentPerson(defaultPerson.Id);
+            }
+        }
+
+        await LoadDataAsync();
+        _loading = false;
+    }
+
+    private async Task LoadDataAsync()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var monthStart = new DateOnly(today.Year, today.Month, 1);
+        _monthTotalCents = await ExpenseService.GetMonthTotalCentsAsync(monthStart);
+
+        _recentExpenses = await ExpenseService.GetRecentAsync(6);
+        _hasAnyExpenses = _recentExpenses.Count > 0;
+        _suggestedDebts = await BalanceService.GetSuggestedDebtsAsync();
+
+        if (ViewAs.CurrentPersonId is { } personId)
+        {
+            _selectedBalance = await BalanceService.GetPersonBalanceAsync(personId);
+        }
+    }
+
+    private async Task SelectViewAs(Guid personId)
+    {
+        ViewAs.SetCurrentPerson(personId);
+        await LoadDataAsync();
+    }
+}

@@ -1,0 +1,12 @@
+@using PrivateExpenses.Web.Support
+
+<span class="avatar avatar-@Size" style="@PersonColorPalette.AvatarStyle(ColorKey)" title="@Name">
+    @Initial
+</span>
+
+@code {
+    [Parameter, EditorRequired] public string Initial { get; set; } = "";
+    [Parameter, EditorRequired] public string ColorKey { get; set; } = "";
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public string Size { get; set; } = "md";
+}

@@ -1,0 +1,256 @@
+@page "/uitgaven"
+@inject IExpenseService ExpenseService
+@inject ICategoryService CategoryService
+@inject IPersonService PersonService
+
+<PageTitle>Uitgaven</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Uitgaven</h1>
+        <p class="page-subtitle">@_results.Count @(_results.Count == 1 ? "uitgave" : "uitgaven") gevonden</p>
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="@ExportUrl" class="btn btn-secondary" download>
+            <Icon Name="download" Size="18" />
+            Exporteren
+        </a>
+        <a href="/uitgaven/nieuw" class="btn btn-primary">
+            <Icon Name="plus" Size="18" />
+            Bon toevoegen
+        </a>
+    </div>
+</div>
+
+<div class="card card-padded" style="margin-bottom:20px;">
+    <div class="stack" style="gap:12px;">
+        <div class="input-money" style="border-radius:var(--radius-sm);">
+            <span class="input-money-prefix"><Icon Name="search" Size="16" /></span>
+            <input class="input" style="border:none;box-shadow:none;" placeholder="Zoek op winkel, product of notitie…"
+                   value="@_filter.SearchText" @oninput="OnSearchInput" />
+        </div>
+
+        <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;">
+            <div class="field">
+                <label class="field-label">Periode vanaf</label>
+                <input type="date" class="input" value="@_fromDateText" @onchange="e => OnFromDateChanged(e.Value?.ToString())" />
+            </div>
+            <div class="field">
+                <label class="field-label">Periode tot</label>
+                <input type="date" class="input" value="@_toDateText" @onchange="e => OnToDateChanged(e.Value?.ToString())" />
+            </div>
+            <div class="field">
+                <label class="field-label">Categorie</label>
+                <select class="select" @onchange="OnCategoryChanged">
+                    <option value="">Alle categorieën</option>
+                    @foreach (var category in _categories)
+                    {
+                        <option value="@category.Id" selected="@(_filter.CategoryId == category.Id)">@category.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label class="field-label">Betaald door</label>
+                <select class="select" @onchange="OnPayerChanged">
+                    <option value="">Iedereen</option>
+                    @foreach (var person in _people)
+                    {
+                        <option value="@person.Id" selected="@(_filter.PayerPersonId == person.Id)">@person.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label class="field-label">Betreft persoon</label>
+                <select class="select" @onchange="OnInvolvesChanged">
+                    <option value="">Iedereen</option>
+                    @foreach (var person in _people)
+                    {
+                        <option value="@person.Id" selected="@(_filter.InvolvesPersonId == person.Id)">@person.Name</option>
+                    }
+                </select>
+            </div>
+            <div class="field">
+                <label class="field-label">Sorteren</label>
+                <select class="select" @onchange="OnSortChanged">
+                    <option value="@((int)ExpenseFilter.SortOption.DateDescending)">Nieuwste eerst</option>
+                    <option value="@((int)ExpenseFilter.SortOption.DateAscending)">Oudste eerst</option>
+                    <option value="@((int)ExpenseFilter.SortOption.AmountDescending)">Hoogste bedrag</option>
+                    <option value="@((int)ExpenseFilter.SortOption.AmountAscending)">Laagste bedrag</option>
+                </select>
+            </div>
+        </div>
+
+        @if (HasActiveFilters)
+        {
+            <button type="button" class="btn btn-ghost btn-sm" style="align-self:flex-start;" @onclick="ClearFilters">
+                <Icon Name="close" Size="14" />
+                Filters wissen
+            </button>
+        }
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p class="text-muted">Laden…</p>
+}
+else if (_results.Count == 0)
+{
+    <div class="card">
+        <EmptyState IconName="search" Title="Geen uitgaven gevonden" Description="Pas je zoekopdracht of filters aan, of voeg een nieuwe uitgave toe." />
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="stack" style="gap:0;">
+            @foreach (var expense in _results)
+            {
+                <a href="@($"/uitgaven/{expense.Id}")" class="list-row">
+                    <span class="list-row-icon" style="@CategoryColorPalette.BackgroundStyle(expense.CategoryIconKey)">
+                        <Icon Name="@(expense.CategoryIconKey ?? "receipt")" Size="18" />
+                    </span>
+                    <span class="list-row-main">
+                        <span class="list-row-title">@expense.MerchantName</span>
+                        <span class="list-row-subtitle">
+                            @expense.ExpenseDate.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture)
+                            @if (expense.CategoryName is not null)
+                            {
+                                <text> · @expense.CategoryName</text>
+                            }
+                            @if (expense.PaidBy.Count > 0)
+                            {
+                                <text> · Betaald door @string.Join(", ", expense.PaidBy.Select(p => p.Name))</text>
+                            }
+                        </span>
+                    </span>
+                    @if (!expense.HasReceiptDocument)
+                    {
+                        <span class="badge badge-neutral" title="Handmatig ingevoerd">
+                            <Icon Name="pencil" Size="12" />
+                        </span>
+                    }
+                    <span class="list-row-amount">@MoneyFormatter.Format(expense.TotalCents)</span>
+                </a>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private ExpenseFilter _filter = new();
+    private List<ExpenseListItemDto> _results = [];
+    private List<Category> _categories = [];
+    private List<Person> _people = [];
+    private string? _fromDateText;
+    private string? _toDateText;
+    private bool _loading = true;
+
+    private string ExportUrl
+    {
+        get
+        {
+            var query = new List<string>();
+            if (!string.IsNullOrWhiteSpace(_filter.SearchText)) query.Add($"search={Uri.EscapeDataString(_filter.SearchText)}");
+            if (_filter.FromDate is { } from) query.Add($"from={from:yyyy-MM-dd}");
+            if (_filter.ToDate is { } to) query.Add($"to={to:yyyy-MM-dd}");
+            if (_filter.CategoryId is { } categoryId) query.Add($"categoryId={categoryId}");
+            if (_filter.PayerPersonId is { } payerId) query.Add($"payerPersonId={payerId}");
+            if (_filter.InvolvesPersonId is { } involvesId) query.Add($"involvesPersonId={involvesId}");
+            return "/api/export/expenses" + (query.Count > 0 ? "?" + string.Join("&", query) : "");
+        }
+    }
+
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(_filter.SearchText) || _filter.FromDate is not null || _filter.ToDate is not null ||
+        _filter.CategoryId is not null || _filter.PayerPersonId is not null || _filter.InvolvesPersonId is not null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await CategoryService.GetAllAsync();
+        _people = await PersonService.GetAllAsync();
+        await ReloadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        _results = await ExpenseService.GetListAsync(_filter);
+        StateHasChanged();
+    }
+
+    private Task OnSearchInput(ChangeEventArgs e)
+    {
+        _filter = CloneWith(searchText: e.Value?.ToString());
+        return ReloadAsync();
+    }
+
+    private Task OnFromDateChanged(string? value)
+    {
+        _fromDateText = value;
+        _filter = CloneWith(fromDate: DateOnly.TryParse(value, out var d) ? d : null, clearFromDate: string.IsNullOrEmpty(value));
+        return ReloadAsync();
+    }
+
+    private Task OnToDateChanged(string? value)
+    {
+        _toDateText = value;
+        _filter = CloneWith(toDate: DateOnly.TryParse(value, out var d) ? d : null, clearToDate: string.IsNullOrEmpty(value));
+        return ReloadAsync();
+    }
+
+    private Task OnCategoryChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _filter = CloneWith(categoryId: Guid.TryParse(value, out var id) ? id : null, clearCategory: string.IsNullOrEmpty(value));
+        return ReloadAsync();
+    }
+
+    private Task OnPayerChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _filter = CloneWith(payerId: Guid.TryParse(value, out var id) ? id : null, clearPayer: string.IsNullOrEmpty(value));
+        return ReloadAsync();
+    }
+
+    private Task OnInvolvesChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _filter = CloneWith(involvesId: Guid.TryParse(value, out var id) ? id : null, clearInvolves: string.IsNullOrEmpty(value));
+        return ReloadAsync();
+    }
+
+    private Task OnSortChanged(ChangeEventArgs e)
+    {
+        var sort = (ExpenseFilter.SortOption)int.Parse(e.Value?.ToString() ?? "0");
+        _filter = CloneWith(sort: sort);
+        return ReloadAsync();
+    }
+
+    private Task ClearFilters()
+    {
+        _filter = new ExpenseFilter();
+        _fromDateText = null;
+        _toDateText = null;
+        return ReloadAsync();
+    }
+
+    private ExpenseFilter CloneWith(
+        string? searchText = null, DateOnly? fromDate = null, bool clearFromDate = false,
+        DateOnly? toDate = null, bool clearToDate = false,
+        Guid? categoryId = null, bool clearCategory = false,
+        Guid? payerId = null, bool clearPayer = false,
+        Guid? involvesId = null, bool clearInvolves = false,
+        ExpenseFilter.SortOption? sort = null) => new()
+    {
+        SearchText = searchText ?? _filter.SearchText,
+        FromDate = clearFromDate ? null : fromDate ?? _filter.FromDate,
+        ToDate = clearToDate ? null : toDate ?? _filter.ToDate,
+        CategoryId = clearCategory ? null : categoryId ?? _filter.CategoryId,
+        PayerPersonId = clearPayer ? null : payerId ?? _filter.PayerPersonId,
+        InvolvesPersonId = clearInvolves ? null : involvesId ?? _filter.InvolvesPersonId,
+        MinAmountCents = _filter.MinAmountCents,
+        MaxAmountCents = _filter.MaxAmountCents,
+        Sort = sort ?? _filter.Sort,
+    };
+}

@@ -1,0 +1,34 @@
+@page "/uitgaven/nieuw"
+
+<PageTitle>Nieuwe uitgave</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Nieuwe uitgave</h1>
+        <p class="page-subtitle">Kies hoe je deze uitgave wilt toevoegen</p>
+    </div>
+</div>
+
+<div class="grid grid-2">
+    <a href="/bon/nieuw" class="card card-padded" style="display:flex;flex-direction:column;gap:12px;">
+        <div class="list-row-icon" style="width:48px;height:48px;background:var(--color-primary-soft);color:var(--color-primary);">
+            <Icon Name="camera" Size="22" />
+        </div>
+        <div>
+            <div style="font-weight:700;font-size:16px;">Bon uploaden</div>
+            <p class="text-muted text-sm" style="margin-top:4px;">Foto, kassabon of PDF — de app herkent automatisch de producten.</p>
+        </div>
+        <span class="btn btn-primary btn-block" style="margin-top:auto;">Bon uploaden</span>
+    </a>
+
+    <a href="/uitgaven/handmatig" class="card card-padded" style="display:flex;flex-direction:column;gap:12px;">
+        <div class="list-row-icon" style="width:48px;height:48px;background:var(--color-surface-muted);color:var(--color-text-muted);">
+            <Icon Name="pencil" Size="22" />
+        </div>
+        <div>
+            <div style="font-weight:700;font-size:16px;">Handmatig invoeren</div>
+            <p class="text-muted text-sm" style="margin-top:4px;">Geen bon? Voer zelf een omschrijving en bedrag in.</p>
+        </div>
+        <span class="btn btn-secondary btn-block" style="margin-top:auto;">Handmatig invoeren</span>
+    </a>
+</div>

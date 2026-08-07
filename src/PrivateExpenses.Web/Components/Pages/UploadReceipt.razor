@@ -1,0 +1,239 @@
+@page "/bon/nieuw"
+@using PrivateExpenses.Application.Exceptions
+@using PrivateExpenses.Application.Validation
+@inject IReceiptImportService ReceiptImportService
+@inject NavigationManager Navigation
+
+<PageTitle>Bon uploaden</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Bon uploaden</h1>
+        <p class="page-subtitle">Foto, kassabon of PDF — maximaal 20 MB</p>
+    </div>
+</div>
+
+@if (_errorMessage is not null)
+{
+    <div class="banner banner-danger" style="margin-bottom:20px;max-width:640px;">
+        <Icon Name="alert-triangle" Size="18" />
+        <div>
+            <span>@_errorMessage</span>
+            <div style="margin-top:8px;display:flex;gap:8px;">
+                <button type="button" class="btn btn-secondary btn-sm" @onclick="Reset">Opnieuw proberen</button>
+                <a href="/uitgaven/handmatig" class="btn btn-secondary btn-sm">Handmatig invoeren</a>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_duplicateMatches.Count > 0 && !_duplicateAcknowledged)
+{
+    <div class="banner banner-warning" style="margin-bottom:20px;max-width:640px;flex-direction:column;align-items:stretch;">
+        <div style="display:flex;gap:12px;">
+            <Icon Name="alert-triangle" Size="18" />
+            <span style="font-weight:700;">Deze bon lijkt al eerder toegevoegd.</span>
+        </div>
+        <div class="stack" style="gap:6px;margin:10px 0;">
+            @foreach (var match in _duplicateMatches)
+            {
+                <a href="@($"/uitgaven/{match.ExpenseId}")" class="text-sm" style="color:var(--color-warning-text);text-decoration:underline;">
+                    @match.MerchantName · @match.ExpenseDate.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture) · @MoneyFormatter.Format(match.TotalCents)
+                </a>
+            }
+        </div>
+        <div style="display:flex;gap:8px;">
+            <button type="button" class="btn btn-secondary btn-sm" @onclick="Reset">Annuleren</button>
+            <button type="button" class="btn btn-primary btn-sm" @onclick="ContinueAfterDuplicateAsync">Toch toevoegen</button>
+        </div>
+    </div>
+}
+else if (_stage == Stage.PickFile)
+{
+    <div class="card" style="max-width:640px;">
+        <div class="card-padded">
+            <label class="dropzone" for="receipt-file-desktop">
+                <Icon Name="upload" Size="28" />
+                <span style="font-weight:700;">Sleep een bestand hierheen of klik om te bladeren</span>
+                <span class="text-muted text-sm">JPG, PNG, WEBP of PDF</span>
+                <InputFile id="receipt-file-desktop" OnChange="OnFileSelected" accept=".jpg,.jpeg,.png,.webp,.pdf" class="dropzone-input" />
+            </label>
+
+            <div class="mobile-capture-actions">
+                <label class="btn btn-primary btn-block" for="receipt-file-camera">
+                    <Icon Name="camera" Size="18" /> Foto maken
+                    <InputFile id="receipt-file-camera" OnChange="OnFileSelected" accept="image/*" class="visually-hidden" />
+                </label>
+                <label class="btn btn-secondary btn-block" for="receipt-file-gallery">
+                    <Icon Name="image" Size="18" /> Kies bestand
+                    <InputFile id="receipt-file-gallery" OnChange="OnFileSelected" accept=".jpg,.jpeg,.png,.webp,.pdf" class="visually-hidden" />
+                </label>
+            </div>
+        </div>
+    </div>
+}
+else if (_stage != Stage.Error)
+{
+    <div class="card card-padded" style="max-width:480px;">
+        <div class="stack" style="gap:14px;">
+            @foreach (var step in ProgressSteps)
+            {
+                var done = step.Key < _stage;
+                var current = step.Key == _stage;
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="avatar avatar-sm" style="@(done ? "background:var(--color-success-soft);color:var(--color-success-text);" : current ? "background:var(--color-primary-soft);color:var(--color-primary-text);" : "")">
+                        @if (done)
+                        {
+                            <Icon Name="check" Size="14" />
+                        }
+                        else
+                        {
+                            <span>@((int)step.Key + 1)</span>
+                        }
+                    </span>
+                    <span class="text-sm" style="font-weight:@(current || done ? "700" : "500");color:@(current || done ? "var(--color-text)" : "var(--color-text-subtle))");">
+                        @step.Value
+                    </span>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .dropzone {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 48px 24px;
+        border: 2px dashed var(--color-border-strong);
+        border-radius: var(--radius-md);
+        color: var(--color-text-muted);
+        cursor: pointer;
+        text-align: center;
+    }
+
+    .dropzone:hover {
+        border-color: var(--color-primary);
+        background: var(--color-primary-soft);
+    }
+
+    .dropzone-input {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .mobile-capture-actions {
+        display: none;
+    }
+
+    @@media (max-width: 700px) {
+        .dropzone { display: none; }
+        .mobile-capture-actions { display: flex; flex-direction: column; gap: 10px; }
+    }
+</style>
+
+@code {
+    private enum Stage { PickFile, Uploading, PreparingDocument, Analyzing, RecognizingItems, ReviewingResult, Error }
+
+    private static readonly Dictionary<Stage, string> ProgressSteps = new()
+    {
+        [Stage.Uploading] = "Upload ontvangen",
+        [Stage.PreparingDocument] = "Document voorbereiden",
+        [Stage.Analyzing] = "Bon analyseren",
+        [Stage.RecognizingItems] = "Productregels herkennen",
+        [Stage.ReviewingResult] = "Resultaat controleren",
+    };
+
+    private Stage _stage = Stage.PickFile;
+    private string? _errorMessage;
+    private List<DuplicateMatchDto> _duplicateMatches = [];
+    private bool _duplicateAcknowledged;
+    private Guid _documentId;
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _errorMessage = null;
+        _duplicateMatches = [];
+        _duplicateAcknowledged = false;
+        var file = e.File;
+
+        try
+        {
+            _stage = Stage.Uploading;
+            StateHasChanged();
+
+            await using var stream = file.OpenReadStream(ReceiptFileValidator.MaxFileSizeBytes);
+            var result = await ReceiptImportService.UploadAsync(stream, file.Name, file.ContentType, file.Size);
+            _documentId = result.DocumentId;
+
+            if (result.DuplicateMatches.Count > 0)
+            {
+                _duplicateMatches = result.DuplicateMatches.ToList();
+                _stage = Stage.PickFile;
+                StateHasChanged();
+                return;
+            }
+
+            await ContinueToAnalysisAsync();
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _errorMessage = ex.Message;
+            _stage = Stage.Error;
+        }
+        catch (IOException)
+        {
+            _errorMessage = $"Dit bestand is te groot. Maximaal {ReceiptFileValidator.MaxFileSizeBytes / 1024 / 1024} MB.";
+            _stage = Stage.Error;
+        }
+    }
+
+    private Task ContinueAfterDuplicateAsync()
+    {
+        _duplicateAcknowledged = true;
+        return ContinueToAnalysisAsync();
+    }
+
+    private async Task ContinueToAnalysisAsync()
+    {
+        try
+        {
+            _stage = Stage.PreparingDocument;
+            StateHasChanged();
+            await Task.Delay(150);
+
+            _stage = Stage.Analyzing;
+            StateHasChanged();
+
+            await ReceiptImportService.ParseAsync(_documentId);
+
+            _stage = Stage.RecognizingItems;
+            StateHasChanged();
+            await Task.Delay(150);
+
+            _stage = Stage.ReviewingResult;
+            StateHasChanged();
+            await Task.Delay(150);
+
+            Navigation.NavigateTo($"/bon/{_documentId}/beoordelen");
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _errorMessage = ex.Message;
+            _stage = Stage.Error;
+        }
+    }
+
+    private void Reset()
+    {
+        _stage = Stage.PickFile;
+        _errorMessage = null;
+        _duplicateMatches = [];
+        _duplicateAcknowledged = false;
+    }
+}

@@ -1,0 +1,32 @@
+# Build outputs
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+*.user
+*.suo
+.idea/
+
+# Local runtime data — SQLite database and uploaded receipts must never be committed
+src/PrivateExpenses.Web/data/
+**/data/uploads/
+*.db
+*.db-shm
+*.db-wal
+
+# User secrets / environment files
+.env
+.env.local
+appsettings.*.local.json
+
+# Test results
+TestResults/
+*.trx
+
+# OS
+.DS_Store
+Thumbs.db

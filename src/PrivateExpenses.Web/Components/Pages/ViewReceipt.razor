@@ -1,0 +1,56 @@
+@page "/bon/{Id:guid}"
+@inject IReceiptImportService ReceiptImportService
+
+<PageTitle>Bon</PageTitle>
+
+@if (_loading)
+{
+    <p class="text-muted">Laden…</p>
+}
+else if (_document is null)
+{
+    <div class="card">
+        <EmptyState IconName="alert-triangle" Title="Bon niet gevonden" Description="Dit document bestaat niet (meer)." />
+    </div>
+}
+else
+{
+    <div class="page-header">
+        <div>
+            @if (_document.ExpenseId is { } expenseId)
+            {
+                <a href="@($"/uitgaven/{expenseId}")" class="text-muted text-sm" style="display:inline-flex;align-items:center;gap:4px;margin-bottom:6px;">
+                    <Icon Name="chevron-left" Size="14" /> Terug naar uitgave
+                </a>
+            }
+            <h1 class="page-title">Originele bon</h1>
+            <p class="page-subtitle">@_document.OriginalFileName · geüpload @_document.UploadedAt.ToLocalTime().ToString("d MMMM yyyy", MoneyFormatter.DutchCulture)</p>
+        </div>
+    </div>
+
+    <div class="card" style="max-width:720px;">
+        @if (_document.MimeType == "application/pdf")
+        {
+            <iframe src="@FileUrl" title="Bon" style="width:100%;height:80vh;border:none;border-radius:var(--radius-lg);"></iframe>
+        }
+        else
+        {
+            <img src="@FileUrl" alt="Bon" style="width:100%;border-radius:var(--radius-lg);display:block;" />
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private ReceiptDocumentDto? _document;
+    private bool _loading = true;
+    private string FileUrl => $"/api/receipts/{Id}/file";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _document = await ReceiptImportService.GetDocumentAsync(Id);
+        _loading = false;
+    }
+}

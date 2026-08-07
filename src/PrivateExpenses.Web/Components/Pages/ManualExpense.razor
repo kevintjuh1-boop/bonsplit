@@ -1,0 +1,223 @@
+@page "/uitgaven/handmatig"
+@page "/uitgaven/{Id:guid}/bewerken"
+@using PrivateExpenses.Application.Exceptions
+@inject IExpenseService ExpenseService
+@inject ICategoryService CategoryService
+@inject IPersonService PersonService
+@inject NavigationManager Navigation
+
+<PageTitle>@(Id is null ? "Handmatige uitgave" : "Uitgave bewerken")</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">@(Id is null ? "Handmatige uitgave" : "Uitgave bewerken")</h1>
+        <p class="page-subtitle">@(Id is null ? "Voor uitgaven zonder bon" : "Wijzigingen werken de saldi automatisch bij")</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p class="text-muted">Laden…</p>
+}
+else
+{
+    <div class="card card-padded" style="max-width:640px;">
+        @if (_errorMessage is not null)
+        {
+            <div class="banner banner-danger" style="margin-bottom:16px;">
+                <Icon Name="alert-triangle" Size="18" />
+                <span>@_errorMessage</span>
+            </div>
+        }
+
+        <div class="stack">
+            <div class="field">
+                <label class="field-label" for="description">Omschrijving *</label>
+                <input id="description" class="input" placeholder="Bijv. Restaurant, cadeau, taxi…" @bind="_description" @bind:event="oninput" />
+            </div>
+
+            <div class="field">
+                <label class="field-label" for="merchant">Winkel/leverancier (optioneel)</label>
+                <input id="merchant" class="input" @bind="_merchantName" @bind:event="oninput" />
+            </div>
+
+            <div class="grid grid-2">
+                <div class="field">
+                    <label class="field-label" for="date">Datum *</label>
+                    <input id="date" type="date" class="input" @bind="_expenseDate" />
+                </div>
+                <div class="field">
+                    <label class="field-label" for="amount">Bedrag *</label>
+                    <div class="input-money">
+                        <span class="input-money-prefix">€</span>
+                        <input id="amount" inputmode="decimal" placeholder="0,00" @bind="_amountText" @bind:event="oninput" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="field-label" for="category">Categorie</label>
+                <select id="category" class="select" @bind="_categoryId">
+                    <option value="">Geen categorie</option>
+                    @foreach (var category in _categories)
+                    {
+                        <option value="@category.Id">@category.Name</option>
+                    }
+                </select>
+            </div>
+
+            <div class="field">
+                <span class="field-label">Betaald door *</span>
+                <div class="person-row" style="flex-wrap:wrap;">
+                    @foreach (var person in _people)
+                    {
+                        var selected = person.Id == _payerId;
+                        <button type="button" class="person-chip @(selected ? "selected" : "")"
+                                style="@(selected ? PersonColorPalette.SolidStyle(person.ColorKey) : "")"
+                                @onclick="() => _payerId = person.Id">
+                            <span class="avatar avatar-xs" style="@(selected ? "background:rgba(255,255,255,.28);color:white;" : PersonColorPalette.AvatarStyle(person.ColorKey))">@person.Initial</span>
+                            @person.Name
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="field">
+                <span class="field-label">Voor wie *</span>
+                <PersonMultiSelect People="_people" SelectedIds="_participantIds" SelectedIdsChanged="ids => _participantIds = ids" />
+            </div>
+
+            <div class="field">
+                <label class="field-label" for="notes">Notitie (optioneel)</label>
+                <textarea id="notes" class="textarea" @bind="_notes" @bind:event="oninput"></textarea>
+            </div>
+
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px;">
+                <a href="@(Id is null ? "/uitgaven/nieuw" : $"/uitgaven/{Id}")" class="btn btn-secondary">Annuleren</a>
+                <button type="button" class="btn btn-primary" disabled="@_saving" @onclick="SaveAsync">
+                    @(_saving ? "Opslaan…" : "Uitgave opslaan")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private List<Category> _categories = [];
+    private List<Person> _people = [];
+    private bool _loading = true;
+    private bool _saving;
+    private string? _errorMessage;
+
+    private string _description = "";
+    private string _merchantName = "";
+    private DateTime _expenseDate = DateTime.Today;
+    private string _amountText = "";
+    private Guid? _categoryId;
+    private Guid? _payerId;
+    private HashSet<Guid> _participantIds = [];
+    private string _notes = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _categories = await CategoryService.GetAllAsync();
+        _people = await PersonService.GetAllAsync();
+
+        if (Id is { } expenseId)
+        {
+            var existing = await ExpenseService.GetDetailAsync(expenseId);
+            if (existing is not null && existing.Items.Count == 1)
+            {
+                var item = existing.Items[0];
+                _description = item.Description;
+                _merchantName = existing.MerchantName == item.Description ? "" : existing.MerchantName;
+                _expenseDate = existing.ExpenseDate.ToDateTime(TimeOnly.MinValue);
+                _amountText = (existing.TotalCents / 100m).ToString("F2", MoneyFormatter.DutchCulture);
+                _categoryId = existing.CategoryId;
+                _payerId = existing.Payments.FirstOrDefault()?.PersonId;
+                _participantIds = item.Shares.Select(s => s.PersonId).ToHashSet();
+                _notes = existing.Notes ?? "";
+            }
+        }
+
+        _loading = false;
+    }
+
+    private async Task SaveAsync()
+    {
+        _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_description))
+        {
+            _errorMessage = "Vul een omschrijving in.";
+            return;
+        }
+
+        var amountCents = MoneyParsing.ParseToCents(_amountText);
+        if (amountCents is null || amountCents <= 0)
+        {
+            _errorMessage = "Vul een geldig bedrag groter dan €0,00 in.";
+            return;
+        }
+
+        if (_payerId is null)
+        {
+            _errorMessage = "Kies wie deze uitgave heeft betaald.";
+            return;
+        }
+
+        if (_participantIds.Count == 0)
+        {
+            _errorMessage = "Kies voor wie deze uitgave is.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var merchantName = string.IsNullOrWhiteSpace(_merchantName) ? _description.Trim() : _merchantName.Trim();
+            var participantOrder = _people.Where(p => _participantIds.Contains(p.Id)).Select(p => p.Id).ToList();
+
+            var request = new CreateExpenseRequest
+            {
+                MerchantName = merchantName,
+                ExpenseDate = DateOnly.FromDateTime(_expenseDate),
+                TotalCents = amountCents.Value,
+                CategoryId = _categoryId,
+                Notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes.Trim(),
+                Payments = [new ExpensePaymentInput { PersonId = _payerId.Value, AmountCents = amountCents.Value }],
+                Items =
+                [
+                    new ExpenseItemInput
+                    {
+                        Description = _description.Trim(),
+                        TotalCents = amountCents.Value,
+                        ParticipantPersonIdsInOrder = participantOrder,
+                    }
+                ],
+            };
+
+            var id = Id is { } existingId
+                ? await UpdateAndReturnIdAsync(existingId, request)
+                : await ExpenseService.CreateAsync(request);
+
+            Navigation.NavigateTo($"/uitgaven/{id}");
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task<Guid> UpdateAndReturnIdAsync(Guid expenseId, CreateExpenseRequest request)
+    {
+        await ExpenseService.UpdateAsync(expenseId, request);
+        return expenseId;
+    }
+}

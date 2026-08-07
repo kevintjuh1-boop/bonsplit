@@ -1,0 +1,628 @@
+@page "/bon/{DocumentId:guid}/beoordelen"
+@using PrivateExpenses.Application.Exceptions
+@using PrivateExpenses.Domain.Calculations
+@inject IReceiptImportService ReceiptImportService
+@inject IExpenseService ExpenseService
+@inject ICategoryService CategoryService
+@inject IPersonService PersonService
+@inject NavigationManager Navigation
+
+<PageTitle>Bon controleren</PageTitle>
+
+@if (_loading)
+{
+    <p class="text-muted">Laden…</p>
+}
+else
+{
+    <div class="mobile-hero">
+        <div class="mobile-hero-row">
+            <a href="/uitgaven" class="mobile-hero-back" aria-label="Terug">
+                <Icon Name="chevron-left" Size="18" />
+            </a>
+            <h1 class="page-title" style="font-size:20px;">Bon verdelen</h1>
+            <span style="width:32px;"></span>
+        </div>
+
+        <div style="margin-top:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:8px;gap:12px;">
+                <span class="text-sm" style="font-weight:700;">
+                    @AssignedCount / @_items.Count verdeeld
+                </span>
+                <span style="text-align:right;">
+                    <span style="display:block;font-weight:800;font-size:19px;font-variant-numeric:tabular-nums;">@MoneyFormatter.Format(TotalCentsValue)</span>
+                    <span class="text-sm" style="opacity:.6;">Totaal</span>
+                </span>
+            </div>
+            <div class="progress-track">
+                <div class="progress-fill @(AssignedCount == _items.Count && _items.Count > 0 ? "complete" : "")" style="width:@(ProgressPercent)%;"></div>
+            </div>
+        </div>
+
+        <div class="mobile-tabs" style="margin-top:16px;">
+            <button type="button" class="pill-filter @(_mobileTab == MobileTab.Bon ? "active" : "")" @onclick="() => _mobileTab = MobileTab.Bon">Bon</button>
+            <button type="button" class="pill-filter @(_mobileTab == MobileTab.Gegevens ? "active" : "")" @onclick="() => _mobileTab = MobileTab.Gegevens">Verdelen</button>
+        </div>
+    </div>
+
+    @if (_document?.ParsingStatus == PrivateExpenses.Domain.Enums.ParsingStatus.Failed)
+    {
+        <div class="banner banner-warning" style="margin-bottom:16px;">
+            <Icon Name="alert-triangle" Size="18" />
+            <span>Deze bon kon niet automatisch worden uitgelezen (@_document.ParsingError). Vul de gegevens hieronder handmatig in — de bon zelf blijft zichtbaar ter controle.</span>
+        </div>
+    }
+    else if (_parseResult?.ConfidenceWarnings.Count > 0)
+    {
+        <div class="banner banner-info" style="margin-bottom:16px;">
+            <Icon Name="info" Size="18" />
+            <span>@string.Join(" ", _parseResult.ConfidenceWarnings)</span>
+        </div>
+    }
+
+    @if (_saveError is not null)
+    {
+        <div class="banner banner-danger" style="margin-bottom:16px;">
+            <Icon Name="alert-triangle" Size="18" />
+            <span>@_saveError</span>
+        </div>
+    }
+
+    <div class="review-columns">
+        <div class="review-preview @(_mobileTab == MobileTab.Bon ? "" : "mobile-hidden")">
+            <div class="card" style="position:sticky;top:16px;">
+                @if (_document is not null)
+                {
+                    @if (_document.MimeType == "application/pdf")
+                    {
+                        <iframe src="@FileUrl" title="Bon" style="width:100%;height:75vh;border:none;border-radius:var(--radius-lg);"></iframe>
+                    }
+                    else
+                    {
+                        <img src="@FileUrl" alt="Bon" style="width:100%;border-radius:var(--radius-lg);display:block;" />
+                    }
+                }
+            </div>
+        </div>
+
+        <div class="review-data @(_mobileTab == MobileTab.Gegevens ? "" : "mobile-hidden")">
+            <div class="card card-padded" style="margin-bottom:16px;">
+                <div class="grid grid-2" style="gap:12px;">
+                    <div class="field">
+                        <label class="field-label">Winkel *</label>
+                        <input class="input" @bind="_merchantName" @bind:event="oninput" />
+                    </div>
+                    <div class="field">
+                        <label class="field-label">Datum *</label>
+                        <input type="date" class="input" @bind="_expenseDate" />
+                    </div>
+                    <div class="field">
+                        <label class="field-label">Totaal (bon) *</label>
+                        <div class="input-money">
+                            <span class="input-money-prefix">€</span>
+                            <input inputmode="decimal" @bind="_totalText" @bind:event="oninput" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="field-label">Categorie</label>
+                        <select class="select" @bind="_categoryId">
+                            <option value="">Geen categorie</option>
+                            @foreach (var category in _categories)
+                            {
+                                <option value="@category.Id">@category.Name</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field" style="margin-top:12px;">
+                    <span class="field-label">Betaald door *</span>
+                    <div class="person-row" style="flex-wrap:wrap;">
+                        @foreach (var person in _people)
+                        {
+                            var selected = person.Id == _payerId;
+                            <button type="button" class="person-chip @(selected ? "selected" : "")"
+                                    style="@(selected ? PersonColorPalette.SolidStyle(person.ColorKey) : "")"
+                                    @onclick="() => _payerId = person.Id">
+                                <span class="avatar avatar-xs" style="@(selected ? "background:rgba(255,255,255,.28);color:white;" : PersonColorPalette.AvatarStyle(person.ColorKey))">@person.Initial</span>
+                                @person.Name
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="banner @(DifferenceCents == 0 ? "banner-success" : "banner-warning")" style="margin-bottom:16px;justify-content:space-between;align-items:center;">
+                <span>
+                    <Icon Name="@(DifferenceCents == 0 ? "check-circle" : "alert-triangle")" Size="16" />
+                    Bon totaal: @MoneyFormatter.Format(TotalCentsValue) · Regels totaal: @MoneyFormatter.Format(ItemsTotalCents) · Verschil: @MoneyFormatter.Format(Math.Abs(DifferenceCents))
+                    — @(DifferenceCents == 0 ? "Klopt" : "Controle nodig")
+                </span>
+                @if (DifferenceCents != 0)
+                {
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="AddCorrectionLine">Correctieregel toevoegen</button>
+                }
+            </div>
+
+            <div class="sticky-toolbar stack" style="gap:10px;margin-bottom:10px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                    <span class="text-sm text-muted">@AssignedCount / @_items.Count regels verdeeld @(AssignedCount == _items.Count && _items.Count > 0 ? "✓" : "")</span>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <input class="input" style="width:180px;" placeholder="Zoek product…" @bind="_itemSearch" @bind:event="oninput" />
+                        <button type="button" class="btn btn-secondary btn-sm" @onclick="AddBlankItem">
+                            <Icon Name="plus" Size="14" /> Regel
+                        </button>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="pill-filter @(_filterMode == ItemFilterMode.All ? "active" : "")" @onclick="() => SetFilter(ItemFilterMode.All, null)">Alle regels</button>
+                    <button type="button" class="pill-filter @(_filterMode == ItemFilterMode.Unassigned ? "active" : "")" @onclick="() => SetFilter(ItemFilterMode.Unassigned, null)">Niet verdeeld</button>
+                    @foreach (var person in _people)
+                    {
+                        <button type="button" class="pill-filter @(_filterMode == ItemFilterMode.Person && _filterPersonId == person.Id ? "active" : "")" @onclick="() => SetFilter(ItemFilterMode.Person, person.Id)">@person.Name</button>
+                    }
+                </div>
+
+                @if (SelectedCount > 0)
+                {
+                    <div class="banner banner-info" style="align-items:center;justify-content:space-between;">
+                        <span>@SelectedCount regel(s) geselecteerd</span>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                            <span class="text-sm text-muted" style="align-self:center;">Toewijzen aan:</span>
+                            @foreach (var person in _people)
+                            {
+                                <button type="button" class="person-quick" style="@PersonColorPalette.AvatarStyle(person.ColorKey)" title="@person.Name" @onclick="() => BulkAssign(person.Id)">
+                                    @person.Initial
+                                </button>
+                            }
+                            <button type="button" class="btn btn-secondary btn-sm" @onclick="() => BulkAssign(null)">Iedereen</button>
+                            <button type="button" class="btn btn-ghost btn-sm" @onclick="ClearSelection">Selectie wissen</button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="card">
+                <div class="stack" style="gap:0;">
+                    @foreach (var item in FilteredItems)
+                    {
+                        <div class="list-row" style="align-items:flex-start;flex-wrap:wrap;">
+                            <input type="checkbox" style="margin-top:10px;" checked="@item.Selected" @onchange="e => item.Selected = (bool)e.Value!" />
+                            <span class="list-row-main" style="min-width:220px;">
+                                <input class="input" style="margin-bottom:6px;" @bind="item.Description" @bind:event="oninput" />
+                                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                    <div class="input-money" style="width:130px;">
+                                        <span class="input-money-prefix">€</span>
+                                        <input inputmode="decimal" @bind="item.TotalText" @bind:event="oninput" />
+                                    </div>
+                                    <label class="text-sm text-muted" style="display:flex;align-items:center;gap:4px;">
+                                        <input type="checkbox" @bind="item.IsDiscount" /> Korting
+                                    </label>
+                                    <label class="text-sm text-muted" style="display:flex;align-items:center;gap:4px;">
+                                        <input type="checkbox" @bind="item.IsDeposit" /> Statiegeld
+                                    </label>
+                                    <button type="button" class="btn btn-ghost btn-sm" @onclick="() => RemoveItem(item)">
+                                        <Icon Name="trash" Size="14" />
+                                    </button>
+                                </div>
+
+                                @if (!item.CustomSplitEnabled)
+                                {
+                                    <div class="person-row" style="flex-wrap:wrap;margin-top:8px;">
+                                        <button type="button" class="pill-filter @(item.ParticipantIds.Count == _people.Count ? "active" : "")" @onclick="() => ToggleEveryone(item)">
+                                            Iedereen
+                                        </button>
+                                        @foreach (var person in _people)
+                                        {
+                                            var selected = item.ParticipantIds.Contains(person.Id);
+                                            <button type="button" class="person-quick @(selected ? "selected" : "")"
+                                                    style="@(selected ? PersonColorPalette.SolidStyle(person.ColorKey) : PersonColorPalette.AvatarStyle(person.ColorKey))"
+                                                    title="@person.Name"
+                                                    @onclick="() => ToggleParticipant(item, person.Id)">
+                                                @person.Initial
+                                            </button>
+                                        }
+                                        <button type="button" class="btn btn-ghost btn-sm" @onclick="() => EnableCustomSplit(item)">Aangepast verdelen</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="stack" style="gap:6px;margin-top:8px;padding:10px;background:var(--color-surface-muted);border-radius:var(--radius-sm);">
+                                        @foreach (var person in _people)
+                                        {
+                                            <div style="display:flex;align-items:center;gap:8px;">
+                                                <PersonAvatar Initial="@person.Initial" ColorKey="@person.ColorKey" Name="@person.Name" Size="xs" />
+                                                <span class="text-sm" style="width:70px;">@person.Name</span>
+                                                <div class="input-money" style="width:110px;">
+                                                    <span class="input-money-prefix">€</span>
+                                                    <input inputmode="decimal" value="@item.CustomAmountText.GetValueOrDefault(person.Id, "0,00")"
+                                                           @onchange="e => SetCustomAmount(item, person.Id, e.Value?.ToString())" />
+                                                </div>
+                                            </div>
+                                        }
+                                        <div class="text-sm @(item.CustomSplitSumCents == item.TotalCents ? "text-muted" : "")" style="color:@(item.CustomSplitSumCents == item.TotalCents ? "" : "var(--color-danger-text)");">
+                                            Som: @MoneyFormatter.Format(item.CustomSplitSumCents) / @MoneyFormatter.Format(item.TotalCents)
+                                        </div>
+                                        <button type="button" class="btn btn-ghost btn-sm" style="align-self:flex-start;" @onclick="() => DisableCustomSplit(item)">Terug naar gelijke verdeling</button>
+                                    </div>
+                                }
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="show-on-desktop-only" style="margin:20px 0 0;">
+                <a href="/uitgaven" class="btn btn-ghost">Annuleren</a>
+            </div>
+        </div>
+
+        <div class="review-side @(_mobileTab == MobileTab.Gegevens ? "" : "mobile-hidden")">
+            <button type="button" class="card card-padded alles-gezamenlijk-card" @onclick="AssignAllToEveryone">
+                <span class="list-row-icon" style="background:var(--color-mint-soft);color:var(--color-mint-text);">
+                    <Icon Name="users" Size="18" />
+                </span>
+                <span>
+                    <span style="display:block;font-weight:700;font-size:14.5px;">Alles gezamenlijk</span>
+                    <span class="text-sm text-muted">Verdeelt alle resterende items gelijk</span>
+                </span>
+            </button>
+
+            <div class="summary-bar" style="margin-top:12px;">
+                <div>
+                    <div class="summary-bar-label">Tussentotaal verdeeld</div>
+                    <div class="summary-bar-value">@MoneyFormatter.Format(AssignedTotalCents)</div>
+                </div>
+                <button type="button" class="btn btn-primary" disabled="@_saving" @onclick="SaveAsync">
+                    @if (!_saving)
+                    {
+                        <Icon Name="check" Size="16" />
+                    }
+                    @(_saving ? "Opslaan…" : "Opslaan")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .review-columns { display: flex; flex-direction: column; gap: 20px; }
+    .review-preview { min-width: 0; }
+    .review-data { min-width: 0; }
+    .review-side { min-width: 0; }
+    .mobile-tabs { display: none; }
+    .show-on-desktop-only { display: none; }
+
+    .alles-gezamenlijk-card {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
+        text-align: left;
+        border-style: dashed;
+        border-color: var(--color-border-strong);
+        cursor: pointer;
+        background: var(--color-surface);
+    }
+
+    .alles-gezamenlijk-card:hover {
+        border-color: var(--color-mint);
+        background: var(--color-mint-soft);
+    }
+
+    @@media (min-width: 901px) {
+        .review-columns {
+            display: grid;
+            grid-template-columns: minmax(0, 38%) minmax(0, 1fr) 260px;
+            align-items: start;
+        }
+
+        .review-side {
+            position: sticky;
+            top: 16px;
+        }
+
+        .show-on-desktop-only {
+            display: block;
+        }
+    }
+
+    @@media (max-width: 900px) {
+        .mobile-tabs { display: flex; gap: 8px; }
+        .mobile-hidden { display: none; }
+    }
+</style>
+
+@code {
+    private enum MobileTab { Bon, Gegevens }
+    private enum ItemFilterMode { All, Unassigned, Person }
+
+    [Parameter] public Guid DocumentId { get; set; }
+
+    private bool _loading = true;
+    private bool _saving;
+    private string? _saveError;
+    private bool _mismatchConfirmed;
+    private MobileTab _mobileTab = MobileTab.Gegevens;
+    private string _itemSearch = "";
+    private ItemFilterMode _filterMode = ItemFilterMode.All;
+    private Guid? _filterPersonId;
+
+    private ReceiptDocumentDto? _document;
+    private ReceiptParseResult? _parseResult;
+    private List<Category> _categories = [];
+    private List<Person> _people = [];
+
+    private string _merchantName = "";
+    private DateTime _expenseDate = DateTime.Today;
+    private string _totalText = "0,00";
+    private Guid? _categoryId;
+    private Guid? _payerId;
+    private readonly List<ReviewItem> _items = [];
+
+    private string FileUrl => $"/api/receipts/{DocumentId}/file";
+
+    private long TotalCentsValue => MoneyParsing.ParseToCents(_totalText) ?? 0;
+    private long ItemsTotalCents => _items.Sum(i => i.TotalCents);
+    private long DifferenceCents => TotalCentsValue - ItemsTotalCents;
+    private int AssignedCount => _items.Count(i => i.IsAssigned);
+    private int SelectedCount => _items.Count(i => i.Selected);
+    private int ProgressPercent => _items.Count == 0 ? 0 : (int)Math.Round(AssignedCount * 100m / _items.Count);
+    private long AssignedTotalCents => _items.Where(i => i.IsAssigned).Sum(i => i.TotalCents);
+
+    private IEnumerable<ReviewItem> FilteredItems
+    {
+        get
+        {
+            IEnumerable<ReviewItem> source = _items;
+
+            if (!string.IsNullOrWhiteSpace(_itemSearch))
+            {
+                source = source.Where(i => i.Description.Contains(_itemSearch, StringComparison.OrdinalIgnoreCase));
+            }
+
+            source = _filterMode switch
+            {
+                ItemFilterMode.Unassigned => source.Where(i => !i.IsAssigned),
+                ItemFilterMode.Person when _filterPersonId is { } personId => source.Where(i => i.InvolvesPerson(personId)),
+                _ => source,
+            };
+
+            return source;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+
+        _categories = await CategoryService.GetAllAsync();
+        _people = await PersonService.GetAllAsync();
+        _document = await ReceiptImportService.GetDocumentAsync(DocumentId);
+        _parseResult = await ReceiptImportService.GetLastParseResultAsync(DocumentId);
+
+        if (_parseResult is { Success: true })
+        {
+            _merchantName = _parseResult.MerchantName ?? "";
+            _expenseDate = _parseResult.Date?.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today;
+            _totalText = MoneyFormatter.Format(_parseResult.TotalCents ?? 0).Replace("€", "").Trim();
+
+            _items.Clear();
+            foreach (var parsed in _parseResult.Items)
+            {
+                _items.Add(new ReviewItem
+                {
+                    Description = parsed.Description,
+                    Quantity = parsed.Quantity ?? 1,
+                    TotalCents = parsed.TotalPriceCents ?? 0,
+                    IsDiscount = parsed.IsDiscount,
+                    IsDeposit = parsed.IsDeposit,
+                    Confidence = parsed.Confidence,
+                });
+            }
+        }
+
+        _loading = false;
+    }
+
+    private void SetFilter(ItemFilterMode mode, Guid? personId)
+    {
+        _filterMode = mode;
+        _filterPersonId = personId;
+    }
+
+    private void ToggleParticipant(ReviewItem item, Guid personId)
+    {
+        if (!item.ParticipantIds.Remove(personId))
+        {
+            item.ParticipantIds.Add(personId);
+        }
+    }
+
+    private void ToggleEveryone(ReviewItem item)
+    {
+        item.ParticipantIds = item.ParticipantIds.Count == _people.Count
+            ? []
+            : _people.Select(p => p.Id).ToHashSet();
+    }
+
+    private void AssignAllToEveryone()
+    {
+        var everyone = _people.Select(p => p.Id).ToHashSet();
+        foreach (var item in _items)
+        {
+            item.CustomSplitEnabled = false;
+            item.ParticipantIds = new HashSet<Guid>(everyone);
+        }
+    }
+
+    private void BulkAssign(Guid? personId)
+    {
+        var targetIds = personId is { } id ? new HashSet<Guid> { id } : _people.Select(p => p.Id).ToHashSet();
+        foreach (var item in _items.Where(i => i.Selected))
+        {
+            item.CustomSplitEnabled = false;
+            item.ParticipantIds = new HashSet<Guid>(targetIds);
+            item.Selected = false;
+        }
+    }
+
+    private void ClearSelection()
+    {
+        foreach (var item in _items)
+        {
+            item.Selected = false;
+        }
+    }
+
+    private void EnableCustomSplit(ReviewItem item)
+    {
+        var seedParticipants = item.ParticipantIds.Count > 0 ? item.ParticipantIds.ToList() : _people.Select(p => p.Id).ToList();
+        var seedShares = MoneySplitter.SplitEqually(item.TotalCents, seedParticipants);
+
+        item.CustomAmountText.Clear();
+        foreach (var person in _people)
+        {
+            var cents = seedShares.GetValueOrDefault(person.Id, 0);
+            item.CustomAmountText[person.Id] = (cents / 100m).ToString("F2", MoneyFormatter.DutchCulture);
+        }
+
+        item.CustomSplitEnabled = true;
+    }
+
+    private void DisableCustomSplit(ReviewItem item)
+    {
+        item.CustomSplitEnabled = false;
+        item.CustomAmountText.Clear();
+    }
+
+    private void SetCustomAmount(ReviewItem item, Guid personId, string? value) =>
+        item.CustomAmountText[personId] = string.IsNullOrWhiteSpace(value) ? "0,00" : value;
+
+    private void AddBlankItem() => _items.Add(new ReviewItem { Description = "", TotalCents = 0 });
+
+    private void AddCorrectionLine() => _items.Add(new ReviewItem { Description = "Niet herkend bedrag", TotalCents = DifferenceCents });
+
+    private void RemoveItem(ReviewItem item) => _items.Remove(item);
+
+    private async Task SaveAsync()
+    {
+        _saveError = null;
+
+        if (string.IsNullOrWhiteSpace(_merchantName))
+        {
+            _saveError = "Vul de winkel in.";
+            return;
+        }
+
+        if (_items.Count == 0)
+        {
+            _saveError = "Voeg minstens één regel toe.";
+            return;
+        }
+
+        if (_payerId is null)
+        {
+            _saveError = "Kies wie deze bon heeft betaald.";
+            return;
+        }
+
+        if (_items.Any(i => string.IsNullOrWhiteSpace(i.Description)))
+        {
+            _saveError = "Elke regel moet een omschrijving hebben.";
+            return;
+        }
+
+        if (_items.Any(i => !i.IsAssigned))
+        {
+            _saveError = "Niet alle regels zijn toegewezen aan iemand.";
+            return;
+        }
+
+        var invalidCustomSplit = _items.FirstOrDefault(i => i.CustomSplitEnabled && i.CustomSplitSumCents != i.TotalCents);
+        if (invalidCustomSplit is not null)
+        {
+            _saveError = $"De aangepaste verdeling van '{invalidCustomSplit.Description}' ({MoneyFormatter.Format(invalidCustomSplit.CustomSplitSumCents)}) komt niet exact overeen met het regelbedrag ({MoneyFormatter.Format(invalidCustomSplit.TotalCents)}).";
+            return;
+        }
+
+        if (DifferenceCents != 0 && !_mismatchConfirmed)
+        {
+            _saveError = $"Er is een verschil van {MoneyFormatter.Format(Math.Abs(DifferenceCents))} tussen het bontotaal en de regels. Klik nogmaals op 'Uitgave opslaan' om toch door te gaan, of pas de bedragen aan.";
+            _mismatchConfirmed = true;
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var request = new CreateExpenseRequest
+            {
+                MerchantName = _merchantName.Trim(),
+                ExpenseDate = DateOnly.FromDateTime(_expenseDate),
+                TotalCents = TotalCentsValue,
+                CategoryId = _categoryId,
+                ReceiptDocumentId = DocumentId,
+                Items = _items.Select(i => new ExpenseItemInput
+                {
+                    Description = i.Description.Trim(),
+                    Quantity = i.Quantity,
+                    TotalCents = i.TotalCents,
+                    IsDiscount = i.IsDiscount,
+                    IsDeposit = i.IsDeposit,
+                    ParticipantPersonIdsInOrder = _people.Where(p => i.ParticipantIds.Contains(p.Id)).Select(p => p.Id).ToList(),
+                    CustomShareCents = i.CustomSplitEnabled ? i.BuildCustomShareCents() : null,
+                }).ToList(),
+                Payments = [new ExpensePaymentInput { PersonId = _payerId.Value, AmountCents = TotalCentsValue }],
+            };
+
+            var id = await ExpenseService.CreateAsync(request);
+            Navigation.NavigateTo($"/uitgaven/{id}");
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _saveError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private sealed class ReviewItem
+    {
+        public string Description { get; set; } = "";
+        public decimal Quantity { get; set; } = 1;
+        public long TotalCents { get; set; }
+        public bool IsDiscount { get; set; }
+        public bool IsDeposit { get; set; }
+        public double? Confidence { get; set; }
+        public bool Selected { get; set; }
+        public HashSet<Guid> ParticipantIds { get; set; } = [];
+
+        public bool CustomSplitEnabled { get; set; }
+        public Dictionary<Guid, string> CustomAmountText { get; set; } = [];
+
+        public bool IsAssigned => CustomSplitEnabled
+            ? CustomAmountText.Values.Any(t => (MoneyParsing.ParseToCents(t) ?? 0) != 0)
+            : ParticipantIds.Count > 0;
+
+        public long CustomSplitSumCents => CustomAmountText.Values.Sum(t => MoneyParsing.ParseToCents(t) ?? 0);
+
+        public bool InvolvesPerson(Guid personId) => CustomSplitEnabled
+            ? (MoneyParsing.ParseToCents(CustomAmountText.GetValueOrDefault(personId, "")) ?? 0) != 0
+            : ParticipantIds.Contains(personId);
+
+        public Dictionary<Guid, long> BuildCustomShareCents() => CustomAmountText
+            .Select(kv => (PersonId: kv.Key, Cents: MoneyParsing.ParseToCents(kv.Value) ?? 0))
+            .Where(x => x.Cents != 0)
+            .ToDictionary(x => x.PersonId, x => x.Cents);
+
+        public string TotalText
+        {
+            get => (TotalCents / 100m).ToString("F2", MoneyFormatter.DutchCulture);
+            set => TotalCents = MoneyParsing.ParseToCents(value) ?? TotalCents;
+        }
+    }
+}

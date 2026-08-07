@@ -1,0 +1,269 @@
+@page "/saldi"
+@using PrivateExpenses.Application.Exceptions
+@inject IBalanceService BalanceService
+@inject ISettlementService SettlementService
+@inject IPersonService PersonService
+
+<PageTitle>Saldi</PageTitle>
+
+<div class="mobile-hero">
+    <div class="page-header" style="margin-bottom:0;">
+        <div>
+            <h1 class="page-title">Saldi</h1>
+            <p class="page-subtitle">Wie heeft voorgeschoten en wie moet nog betalen</p>
+        </div>
+        <button type="button" class="btn btn-primary hide-on-mobile-hero" @onclick="() => OpenForm(null)">
+            <Icon Name="plus" Size="18" /> Betaling registreren
+        </button>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <p class="text-muted">Laden…</p>
+}
+else
+{
+    @if (_formError is not null)
+    {
+        <div class="banner banner-danger" style="margin-bottom:16px;">
+            <Icon Name="alert-triangle" Size="18" />
+            <span>@_formError</span>
+        </div>
+    }
+
+    @if (_showForm)
+    {
+        <div class="card card-padded" style="margin-bottom:20px;max-width:520px;">
+            <div class="card-header"><span class="card-title">Betaling registreren</span></div>
+            <div class="stack">
+                <div class="field">
+                    <span class="field-label">Van *</span>
+                    <div class="person-row" style="flex-wrap:wrap;">
+                        @foreach (var person in _balances)
+                        {
+                            var selected = person.PersonId == _fromPersonId;
+                            <button type="button" class="person-chip @(selected ? "selected" : "")"
+                                    style="@(selected ? PersonColorPalette.SolidStyle(person.ColorKey) : "")"
+                                    @onclick="() => _fromPersonId = person.PersonId">
+                                <span class="avatar avatar-xs" style="@(selected ? "background:rgba(255,255,255,.28);color:white;" : PersonColorPalette.AvatarStyle(person.ColorKey))">@person.Initial</span>
+                                @person.Name
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="field">
+                    <span class="field-label">Naar *</span>
+                    <div class="person-row" style="flex-wrap:wrap;">
+                        @foreach (var person in _balances)
+                        {
+                            var selected = person.PersonId == _toPersonId;
+                            <button type="button" class="person-chip @(selected ? "selected" : "")"
+                                    style="@(selected ? PersonColorPalette.SolidStyle(person.ColorKey) : "")"
+                                    @onclick="() => _toPersonId = person.PersonId">
+                                <span class="avatar avatar-xs" style="@(selected ? "background:rgba(255,255,255,.28);color:white;" : PersonColorPalette.AvatarStyle(person.ColorKey))">@person.Initial</span>
+                                @person.Name
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="grid grid-2">
+                    <div class="field">
+                        <label class="field-label">Bedrag *</label>
+                        <div class="input-money">
+                            <span class="input-money-prefix">€</span>
+                            <input inputmode="decimal" @bind="_amountText" @bind:event="oninput" />
+                        </div>
+                        <span class="field-hint">Vul het volledige bedrag in voor een volledige betaling, of een deel voor een gedeeltelijke betaling.</span>
+                    </div>
+                    <div class="field">
+                        <label class="field-label">Datum</label>
+                        <input type="date" class="input" @bind="_date" />
+                    </div>
+                </div>
+                <div class="field">
+                    <label class="field-label">Notitie (optioneel)</label>
+                    <input class="input" @bind="_note" @bind:event="oninput" />
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:10px;">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseForm">Annuleren</button>
+                    <button type="button" class="btn btn-primary" disabled="@_saving" @onclick="SubmitAsync">
+                        @(_saving ? "Opslaan…" : "Betaling opslaan")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <div class="card card-padded" style="margin-bottom:20px;">
+        <div class="card-header">
+            <div>
+                <span class="card-title">Wie moet wie betalen?</span>
+                <p class="text-sm text-muted" style="margin-top:2px;">Op basis van alle uitgaven</p>
+            </div>
+        </div>
+        @if (_debts.Count == 0)
+        {
+            <div class="banner banner-success">
+                <Icon Name="check-circle" Size="16" />
+                <span>Alles in balans wanneer saldi €0,00 zijn.</span>
+            </div>
+        }
+        else
+        {
+            <div class="stack" style="gap:8px;">
+                @foreach (var debt in _debts)
+                {
+                    <button type="button" class="list-row clickable" style="width:100%;text-align:left;appearance:none;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);cursor:pointer;" @onclick="() => OpenForm(debt)">
+                        <PersonAvatar Initial="@debt.FromInitial" ColorKey="@debt.FromColorKey" Name="@debt.FromName" Size="sm" />
+                        <Icon Name="arrow-right" Size="16" />
+                        <PersonAvatar Initial="@debt.ToInitial" ColorKey="@debt.ToColorKey" Name="@debt.ToName" Size="sm" />
+                        <span class="list-row-main text-sm text-muted">@debt.FromName → @debt.ToName</span>
+                        <span class="list-row-amount" style="color:var(--color-success-text);">@MoneyFormatter.Format(debt.AmountCents)</span>
+                        <Icon Name="chevron-right" Size="18" />
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="card card-padded" style="margin-bottom:20px;">
+        <div class="card-header"><span class="card-title">Overzicht per persoon</span></div>
+        <div class="stack" style="gap:0;">
+            @foreach (var balance in _balances)
+            {
+                <div class="list-row">
+                    <PersonAvatar Initial="@balance.Initial" ColorKey="@balance.ColorKey" Name="@balance.Name" Size="sm" />
+                    <span class="list-row-main list-row-title">@balance.Name</span>
+                    <span class="list-row-amount @(balance.NetBalanceCents > 0 ? "positive" : balance.NetBalanceCents < 0 ? "negative" : "")"
+                          style="color:@(balance.NetBalanceCents > 0 ? "var(--color-success-text)" : balance.NetBalanceCents < 0 ? "var(--color-danger-text)" : "var(--color-text-muted)");">
+                        @MoneyFormatter.FormatSigned(balance.NetBalanceCents)
+                    </span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card card-padded">
+        <div class="card-header"><span class="card-title">Betalingsgeschiedenis</span></div>
+        @if (_history.Count == 0)
+        {
+            <p class="text-muted text-sm">Nog geen betalingen geregistreerd.</p>
+        }
+        else
+        {
+            <div class="stack" style="gap:0;">
+                @foreach (var settlement in _history)
+                {
+                    <div class="list-row">
+                        <span class="list-row-icon"><Icon Name="arrow-swap" Size="16" /></span>
+                        <span class="list-row-main">
+                            <span class="list-row-title">@settlement.FromPerson!.Name → @settlement.ToPerson!.Name</span>
+                            <span class="list-row-subtitle">
+                                @settlement.SettlementDate.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture)
+                                @if (!string.IsNullOrWhiteSpace(settlement.Note))
+                                {
+                                    <text> · @settlement.Note</text>
+                                }
+                            </span>
+                        </span>
+                        <span class="list-row-amount">@MoneyFormatter.Format(settlement.AmountCents)</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+<Toast @ref="_toast" />
+
+@code {
+    private bool _loading = true;
+    private bool _saving;
+    private bool _showForm;
+    private string? _formError;
+    private Toast _toast = null!;
+
+    private List<PersonBalanceDto> _balances = [];
+    private List<SuggestedDebtDto> _debts = [];
+    private List<Settlement> _history = [];
+
+    private Guid? _fromPersonId;
+    private Guid? _toPersonId;
+    private string _amountText = "";
+    private DateTime _date = DateTime.Today;
+    private string _note = "";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _balances = await BalanceService.GetPersonBalancesAsync();
+        _debts = await BalanceService.GetSuggestedDebtsAsync();
+        _history = await SettlementService.GetHistoryAsync();
+        _loading = false;
+    }
+
+    private void OpenForm(SuggestedDebtDto? debt)
+    {
+        _showForm = true;
+        _formError = null;
+
+        if (debt is not null)
+        {
+            _fromPersonId = debt.FromPersonId;
+            _toPersonId = debt.ToPersonId;
+            _amountText = (debt.AmountCents / 100m).ToString("F2", MoneyFormatter.DutchCulture);
+        }
+        else
+        {
+            _fromPersonId = null;
+            _toPersonId = null;
+            _amountText = "";
+        }
+
+        _date = DateTime.Today;
+        _note = "";
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private async Task SubmitAsync()
+    {
+        _formError = null;
+
+        if (_fromPersonId is null || _toPersonId is null)
+        {
+            _formError = "Kies van wie en naar wie de betaling gaat.";
+            return;
+        }
+
+        var amountCents = MoneyParsing.ParseToCents(_amountText);
+        if (amountCents is null || amountCents <= 0)
+        {
+            _formError = "Vul een geldig bedrag groter dan €0,00 in.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            await SettlementService.CreateAsync(
+                _fromPersonId.Value, _toPersonId.Value, amountCents.Value, DateOnly.FromDateTime(_date),
+                string.IsNullOrWhiteSpace(_note) ? null : _note.Trim());
+
+            _showForm = false;
+            await ReloadAsync();
+            await _toast.ShowAsync("Betaling geregistreerd");
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _formError = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

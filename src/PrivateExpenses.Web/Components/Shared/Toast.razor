@@ -1,0 +1,50 @@
+@* Minimal, page-scoped toast — no global service/DI plumbing. A page that wants a confirmation
+   message drops <Toast @ref="_toast" /> once and calls _toast.Show("..."). *@
+@if (_visible)
+{
+    <div class="toast-host">
+        <div class="toast toast-@Kind.ToString().ToLowerInvariant()">
+            <span class="toast-icon"><Icon Name="@IconFor(Kind)" Size="16" /></span>
+            @_message
+        </div>
+    </div>
+}
+
+@code {
+    public enum ToastKind { Success, Info, Danger }
+
+    private bool _visible;
+    private string _message = "";
+    private ToastKind Kind { get; set; } = ToastKind.Success;
+    private CancellationTokenSource? _hideCts;
+
+    public async Task ShowAsync(string message, ToastKind kind = ToastKind.Success, int durationMs = 3000)
+    {
+        _hideCts?.Cancel();
+        _hideCts = new CancellationTokenSource();
+        var token = _hideCts.Token;
+
+        _message = message;
+        Kind = kind;
+        _visible = true;
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(durationMs, token);
+            _visible = false;
+            StateHasChanged();
+        }
+        catch (TaskCanceledException)
+        {
+            // Superseded by a newer toast; the new one is already rendering.
+        }
+    }
+
+    private static string IconFor(ToastKind kind) => kind switch
+    {
+        ToastKind.Success => "check-circle",
+        ToastKind.Danger => "alert-triangle",
+        _ => "info",
+    };
+}
