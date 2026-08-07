@@ -80,9 +80,14 @@ is fully usable this way, with no AI configured at all. See below to enable real
 
 ### Deploying so the three of you can use it over the internet
 
-See [DEPLOY.md](DEPLOY.md) for a full walkthrough of deploying to Fly.io (persistent storage for the
-database and receipts, a shared password gate since the app itself has no login, HTTPS). A `Dockerfile`
-and `fly.toml` are included and ready to use.
+Two options, both using the same `Dockerfile`:
+
+- [DEPLOY.md](DEPLOY.md) — Fly.io. Fastest to get running, a few euros a month.
+- [DEPLOY-SELFHOST.md](DEPLOY-SELFHOST.md) — self-host for free (e.g. an Oracle Cloud Always Free VM),
+  reachable only over [Tailscale](https://tailscale.com) rather than the public internet.
+
+Both include a shared password gate (the app itself has no login) and persistent storage for the
+database and receipts.
 
 ### Running the tests
 

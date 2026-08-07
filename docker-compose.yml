@@ -1,0 +1,24 @@
+# Self-hosting (Oracle Cloud Always Free VM, a NAS with Docker, or any Linux box). See
+# DEPLOY-SELFHOST.md for the full walkthrough. Deliberately binds only to localhost — the app is never
+# exposed on the public internet; reach it exclusively through Tailscale (see the guide), which is what
+# makes the "no login" design safe to self-host at all.
+
+services:
+  bonsplit:
+    build: .
+    container_name: bonsplit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      ConnectionStrings__DefaultConnection: "Data Source=/data/privateexpenses.db"
+      ReceiptStorage__RootPath: "/data/uploads"
+      DataProtection__KeyRingPath: "/data/keys"
+      ReceiptParsing__Provider: "${RECEIPT_PARSING_PROVIDER:-Development}"
+      ReceiptParsing__AnthropicApiKey: "${ANTHROPIC_API_KEY:-}"
+      SiteAuth__Password: "${SITE_AUTH_PASSWORD}"
+    volumes:
+      - bonsplit_data:/data
+
+volumes:
+  bonsplit_data:
