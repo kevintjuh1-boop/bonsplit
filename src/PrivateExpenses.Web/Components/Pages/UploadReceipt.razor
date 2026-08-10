@@ -3,6 +3,7 @@
 @using PrivateExpenses.Application.Validation
 @inject IReceiptImportService ReceiptImportService
 @inject NavigationManager Navigation
+@inject ILogger<UploadReceipt> Logger
 
 <PageTitle>Bon uploaden</PageTitle>
 
@@ -56,17 +57,17 @@ else if (_stage == Stage.PickFile)
                 <Icon Name="upload" Size="28" />
                 <span style="font-weight:700;">Sleep een bestand hierheen of klik om te bladeren</span>
                 <span class="text-muted text-sm">JPG, PNG, WEBP of PDF</span>
-                <InputFile id="receipt-file-desktop" OnChange="OnFileSelected" accept=".jpg,.jpeg,.png,.webp,.pdf" class="dropzone-input" />
+                <InputFile @key="_inputKey" id="receipt-file-desktop" OnChange="OnFileSelected" accept=".jpg,.jpeg,.png,.webp,.pdf" class="dropzone-input" />
             </label>
 
             <div class="mobile-capture-actions">
                 <label class="btn btn-primary btn-block" for="receipt-file-camera">
                     <Icon Name="camera" Size="18" /> Foto maken
-                    <InputFile id="receipt-file-camera" OnChange="OnFileSelected" accept="image/*" class="visually-hidden" />
+                    <InputFile @key="_inputKey" id="receipt-file-camera" OnChange="OnFileSelected" accept="image/*" class="visually-hidden" />
                 </label>
                 <label class="btn btn-secondary btn-block" for="receipt-file-gallery">
                     <Icon Name="image" Size="18" /> Kies bestand
-                    <InputFile id="receipt-file-gallery" OnChange="OnFileSelected" accept=".jpg,.jpeg,.png,.webp,.pdf" class="visually-hidden" />
+                    <InputFile @key="_inputKey" id="receipt-file-gallery" OnChange="OnFileSelected" accept=".jpg,.jpeg,.png,.webp,.pdf" class="visually-hidden" />
                 </label>
             </div>
         </div>
@@ -155,6 +156,12 @@ else if (_stage != Stage.Error)
     private bool _duplicateAcknowledged;
     private Guid _documentId;
 
+    // Bumped every time we return to the picker so the <InputFile> elements are torn down and
+    // recreated (via @key) rather than reused. A reused element keeps the browser's previous
+    // FileList, and selecting the exact same file again then does not raise a new "change" event at
+    // all — silently leaving the picker looking untouched, with no request ever reaching the server.
+    private int _inputKey;
+
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
         _errorMessage = null;
@@ -162,19 +169,37 @@ else if (_stage != Stage.Error)
         _duplicateAcknowledged = false;
         var file = e.File;
 
+        // The browser→server file transfer runs over the SignalR circuit (RemoteBrowserFileStream),
+        // several interop round-trips reading chunks. If the circuit hiccups mid-transfer (backgrounded
+        // mobile tab, brief network blip) those calls can hang indefinitely with no exception at all —
+        // there is nothing on the .NET side to time them out by default. A hard deadline here turns that
+        // silent, permanent hang into a visible, recoverable error instead.
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
         try
         {
+            Logger.LogInformation("Receipt upload starting: {FileName} ({FileSize} bytes)", file.Name, file.Size);
+
+            // Read and upload the file BEFORE switching away from the PickFile stage. Blazor's InputFile
+            // reads browser bytes via JS interop tied to the <InputFile> DOM element itself — if a
+            // StateHasChanged() here unmounts that element (by switching the UI to the progress view)
+            // while the transfer is still in flight, the interop call throws
+            // "Cannot read properties of null (reading '_blazorFilesById')" because the element it needs
+            // to read from is already gone. Only update _stage once the bytes are safely on the server.
+            await using var stream = file.OpenReadStream(ReceiptFileValidator.MaxFileSizeBytes, timeoutCts.Token);
+            var result = await ReceiptImportService.UploadAsync(stream, file.Name, file.ContentType, file.Size, timeoutCts.Token);
+            _documentId = result.DocumentId;
+
+            Logger.LogInformation("Receipt upload finished: {DocumentId}", _documentId);
+
             _stage = Stage.Uploading;
             StateHasChanged();
-
-            await using var stream = file.OpenReadStream(ReceiptFileValidator.MaxFileSizeBytes);
-            var result = await ReceiptImportService.UploadAsync(stream, file.Name, file.ContentType, file.Size);
-            _documentId = result.DocumentId;
 
             if (result.DuplicateMatches.Count > 0)
             {
                 _duplicateMatches = result.DuplicateMatches.ToList();
                 _stage = Stage.PickFile;
+                _inputKey++;
                 StateHasChanged();
                 return;
             }
@@ -191,6 +216,20 @@ else if (_stage != Stage.Error)
             _errorMessage = $"Dit bestand is te groot. Maximaal {ReceiptFileValidator.MaxFileSizeBytes / 1024 / 1024} MB.";
             _stage = Stage.Error;
         }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            Logger.LogWarning("Receipt upload timed out for {FileName}", file.Name);
+            _errorMessage = "Uploaden duurde te lang. Controleer je verbinding en probeer het opnieuw.";
+            _stage = Stage.Error;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Receipt upload failed unexpectedly for {FileName}", file.Name);
+            _errorMessage = "Uploaden is onverwacht mislukt. Probeer het opnieuw.";
+            _stage = Stage.Error;
+        }
+
+        StateHasChanged();
     }
 
     private Task ContinueAfterDuplicateAsync()
@@ -227,6 +266,12 @@ else if (_stage != Stage.Error)
             _errorMessage = ex.Message;
             _stage = Stage.Error;
         }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Receipt analysis failed unexpectedly for document {DocumentId}", _documentId);
+            _errorMessage = "Verwerken van de bon is onverwacht mislukt. Probeer het opnieuw.";
+            _stage = Stage.Error;
+        }
     }
 
     private void Reset()
@@ -235,5 +280,6 @@ else if (_stage != Stage.Error)
         _errorMessage = null;
         _duplicateMatches = [];
         _duplicateAcknowledged = false;
+        _inputKey++;
     }
 }
