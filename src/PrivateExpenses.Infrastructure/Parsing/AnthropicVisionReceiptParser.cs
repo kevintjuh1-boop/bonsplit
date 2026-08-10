@@ -87,22 +87,37 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
                 OutputConfig = new OutputConfig { Format = new JsonOutputFormat { Schema = BuildSchema() } },
             };
 
-            var response = await client.Messages.Create(parameters, cancellationToken: cancellationToken);
+            // Stream rather than wait for one large buffered response: a non-streaming call sits
+            // idle from the HTTP client's perspective until the entire (structured-JSON, vision)
+            // response is ready, which is exactly the shape that trips a transport-level read
+            // timeout on a flaky outbound connection — streaming starts receiving bytes immediately
+            // and keeps the connection demonstrably alive the whole way through.
+            var jsonBuilder = new System.Text.StringBuilder();
+            string? stopReason = null;
 
-            if (response.StopReason == "refusal")
+            await foreach (var streamEvent in client.Messages.CreateStreaming(parameters, cancellationToken: cancellationToken))
+            {
+                if (streamEvent.TryPickContentBlockDelta(out var contentDelta) && contentDelta.Delta.TryPickText(out var textDelta))
+                {
+                    jsonBuilder.Append(textDelta.Text);
+                }
+                else if (streamEvent.TryPickDelta(out var messageDelta))
+                {
+                    stopReason = messageDelta.Delta.StopReason;
+                }
+            }
+
+            if (stopReason == "refusal")
             {
                 logger.LogWarning("Receipt parsing was refused by the model's safety classifiers.");
                 return ReceiptParseResult.Failed("De bon kon niet worden geanalyseerd (geweigerd door de AI-provider).");
             }
 
-            var jsonText = response.Content
-                .Select(b => b.Value)
-                .OfType<TextBlock>()
-                .FirstOrDefault()?.Text;
+            var jsonText = jsonBuilder.ToString();
 
             if (string.IsNullOrWhiteSpace(jsonText))
             {
-                logger.LogWarning("Receipt parsing returned no text content. StopReason={StopReason}", response.StopReason);
+                logger.LogWarning("Receipt parsing returned no text content. StopReason={StopReason}", stopReason);
                 return ReceiptParseResult.Failed("De bon kon niet worden uitgelezen: geen resultaat ontvangen.");
             }
 
