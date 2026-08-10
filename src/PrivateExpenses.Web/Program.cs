@@ -105,11 +105,22 @@ app.UseHttpsRedirection();
 // production, e.g. via a Fly.io secret) gates the whole app behind one shared HTTP Basic Auth
 // password known to the three of you — not a real user system, just a door lock. Leaving it unset
 // (the default for local development) disables this entirely.
+// Host health checks (Render, and any similar platform) probe a fixed path with no credentials —
+// map it before the password gate below so deploys don't get stuck waiting for a 200 that a
+// password-protected "/" would never give back.
+app.MapGet("/healthz", () => Results.Ok());
+
 var sharedSitePassword = app.Configuration["SiteAuth:Password"];
 if (!string.IsNullOrWhiteSpace(sharedSitePassword))
 {
     app.Use(async (context, next) =>
     {
+        if (context.Request.Path == "/healthz")
+        {
+            await next();
+            return;
+        }
+
         if (!HasValidSharedPassword(context.Request, sharedSitePassword))
         {
             context.Response.Headers.WWWAuthenticate = "Basic realm=\"BonSplit\"";

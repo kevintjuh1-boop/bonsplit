@@ -11,7 +11,7 @@ services:
     region: frankfurt
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /
+    healthCheckPath: /healthz
     disk:
       name: bonsplit-data
       mountPath: /data
