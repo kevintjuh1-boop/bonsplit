@@ -80,9 +80,11 @@ is fully usable this way, with no AI configured at all. See below to enable real
 
 ### Deploying so the three of you can use it over the internet
 
-Two options, both using the same `Dockerfile`:
+Three options, all using the same `Dockerfile`:
 
 - [DEPLOY.md](DEPLOY.md) — Fly.io. Fastest to get running, a few euros a month.
+- [DEPLOY-RENDER.md](DEPLOY-RENDER.md) — Render. Similar cost to Fly.io, deploys from a connected
+  GitHub repo instead of a CLI.
 - [DEPLOY-SELFHOST.md](DEPLOY-SELFHOST.md) — self-host for free (e.g. an Oracle Cloud Always Free VM),
   reachable only over [Tailscale](https://tailscale.com) rather than the public internet.
 

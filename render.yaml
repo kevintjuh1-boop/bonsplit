@@ -1,0 +1,33 @@
+# Render Blueprint — see DEPLOY-RENDER.md for the full setup walkthrough.
+#
+# Uses the same Dockerfile as the Fly.io deployment. The persistent disk requires a paid instance
+# type (Render's free tier has no persistent storage at all — an app storing a real SQLite database
+# and uploaded receipts would lose everything on every restart).
+services:
+  - type: web
+    name: bonsplit
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    disk:
+      name: bonsplit-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      # Absolute paths under the mounted disk so the SQLite database and uploaded receipts survive
+      # restarts and redeploys — the container filesystem itself is ephemeral, the disk isn't.
+      - key: ConnectionStrings__DefaultConnection
+        value: "Data Source=/data/privateexpenses.db"
+      - key: ReceiptStorage__RootPath
+        value: /data/uploads
+      - key: DataProtection__KeyRingPath
+        value: /data/keys
+      - key: ReceiptParsing__Provider
+        value: Development
+      # Secrets — never stored in this file or in git. Set these in the Render dashboard after the
+      # first deploy (Environment tab). See DEPLOY-RENDER.md step 4.
+      - key: SiteAuth__Password
+        sync: false
