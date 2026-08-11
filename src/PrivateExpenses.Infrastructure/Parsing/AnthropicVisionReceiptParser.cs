@@ -52,7 +52,34 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
         - If you are meaningfully uncertain about the overall reading (blurry image, cut-off receipt,
           handwriting, etc.), add a short plain-language note to confidenceWarnings explaining what is
           uncertain. Leave confidenceWarnings empty if you are confident.
-        - Respond with ONLY the structured JSON output. Do not include any other commentary.
+
+        Respond with ONLY a single JSON object matching exactly this shape — no markdown fences, no
+        commentary, nothing before or after it:
+        {
+          "merchantName": string | null,
+          "date": string | null,       // ISO 8601 YYYY-MM-DD
+          "time": string | null,       // 24h HH:MM
+          "currency": string | null,
+          "subtotalAmount": string | null,
+          "discountAmount": string | null,
+          "depositAmount": string | null,
+          "taxAmount": string | null,
+          "totalAmount": string | null,
+          "paymentMethod": string | null,
+          "items": [
+            {
+              "description": string,
+              "quantity": string | null,
+              "unitPriceAmount": string | null,
+              "totalPriceAmount": string | null,
+              "isDiscount": boolean,
+              "isDeposit": boolean,
+              "confidence": number | null,
+              "sourceText": string | null
+            }
+          ],
+          "confidenceWarnings": string[]
+        }
         """;
 
     public async Task<ReceiptParseResult> ParseAsync(ReceiptParseRequest request, CancellationToken cancellationToken = default)
@@ -93,7 +120,7 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
                         Content = new List<ContentBlockParam>
                         {
                             documentBlock,
-                            new TextBlockParam { Text = "Extract this receipt according to the schema." },
+                            new TextBlockParam { Text = "Extract this receipt according to the JSON shape described in your instructions." },
                         },
                     },
                 ],
@@ -103,8 +130,14 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
                 // stop_reason=max_tokens and no usable text — confirmed via a raw request against the
                 // API directly. Receipt field extraction is mechanical, not a reasoning task, so
                 // thinking is disabled outright rather than just capped.
+                //
+                // Deliberately NOT using OutputConfig.Format (strict JSON-schema structured output):
+                // confirmed via a raw request against the API directly that this schema (nested
+                // objects, several nullable-type unions) trips the API's "Schema is too complex" limit
+                // — and hitting that limit is itself what silently ate 90-170+ seconds per attempt
+                // before ever producing an error. The system prompt spells out the exact JSON shape
+                // instead, and MapToResult below already tolerates and reports malformed JSON.
                 Thinking = new ThinkingConfigDisabled(),
-                OutputConfig = new OutputConfig { Format = new JsonOutputFormat { Schema = BuildSchema() } },
             };
 
             // Stream rather than wait for one large buffered response: a non-streaming call sits
@@ -246,57 +279,6 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
         !string.IsNullOrWhiteSpace(value) && TimeOnly.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var t) ? t : null;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
-
-    private static Dictionary<string, JsonElement> BuildSchema()
-    {
-        const string schemaJson = """
-            {
-              "type": "object",
-              "properties": {
-                "merchantName": { "type": ["string", "null"] },
-                "date": { "type": ["string", "null"], "description": "ISO 8601 date YYYY-MM-DD, or null if not visible" },
-                "time": { "type": ["string", "null"], "description": "24h HH:MM, or null if not visible" },
-                "currency": { "type": ["string", "null"] },
-                "subtotalAmount": { "type": ["string", "null"] },
-                "discountAmount": { "type": ["string", "null"] },
-                "depositAmount": { "type": ["string", "null"] },
-                "taxAmount": { "type": ["string", "null"] },
-                "totalAmount": { "type": ["string", "null"] },
-                "paymentMethod": { "type": ["string", "null"] },
-                "items": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "description": { "type": "string" },
-                      "quantity": { "type": ["string", "null"] },
-                      "unitPriceAmount": { "type": ["string", "null"] },
-                      "totalPriceAmount": { "type": ["string", "null"] },
-                      "isDiscount": { "type": "boolean" },
-                      "isDeposit": { "type": "boolean" },
-                      "confidence": { "type": ["number", "null"] },
-                      "sourceText": { "type": ["string", "null"] }
-                    },
-                    "required": ["description", "isDiscount", "isDeposit"],
-                    "additionalProperties": false
-                  }
-                },
-                "confidenceWarnings": { "type": "array", "items": { "type": "string" } }
-              },
-              "required": ["items", "confidenceWarnings"],
-              "additionalProperties": false
-            }
-            """;
-
-        using var document = JsonDocument.Parse(schemaJson);
-        var result = new Dictionary<string, JsonElement>();
-        foreach (var property in document.RootElement.EnumerateObject())
-        {
-            result[property.Name] = property.Value.Clone();
-        }
-
-        return result;
-    }
 
     private sealed class RawReceipt
     {
