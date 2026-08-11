@@ -62,7 +62,10 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
         // user's perspective — bon-analyseren just sits there with no error. A hard deadline turns
         // that into a fast, clear, recoverable failure instead.
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(90));
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(170));
+
+        var jsonBuilder = new System.Text.StringBuilder();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
@@ -109,11 +112,17 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
             // response is ready, which is exactly the shape that trips a transport-level read
             // timeout on a flaky outbound connection — streaming starts receiving bytes immediately
             // and keeps the connection demonstrably alive the whole way through.
-            var jsonBuilder = new System.Text.StringBuilder();
             string? stopReason = null;
+            var eventCount = 0;
 
             await foreach (var streamEvent in client.Messages.CreateStreaming(parameters, cancellationToken: timeoutCts.Token))
             {
+                if (eventCount == 0)
+                {
+                    logger.LogInformation("Receipt parsing: first stream event after {ElapsedMs}ms", sw.ElapsedMilliseconds);
+                }
+                eventCount++;
+
                 if (streamEvent.TryPickContentBlockDelta(out var contentDelta) && contentDelta.Delta.TryPickText(out var textDelta))
                 {
                     jsonBuilder.Append(textDelta.Text);
@@ -123,6 +132,10 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
                     stopReason = messageDelta.Delta.StopReason;
                 }
             }
+
+            logger.LogInformation(
+                "Receipt parsing: stream ended after {ElapsedMs}ms, {EventCount} events, {CharCount} chars accumulated",
+                sw.ElapsedMilliseconds, eventCount, jsonBuilder.Length);
 
             if (stopReason == "refusal")
             {
@@ -142,7 +155,7 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            logger.LogError("Receipt parsing via Anthropic timed out after 90 seconds (no response received).");
+            logger.LogError("Receipt parsing via Anthropic timed out after 170 seconds. {ElapsedMs}ms elapsed, {CharCount} chars accumulated so far.", sw.ElapsedMilliseconds, jsonBuilder.Length);
             return ReceiptParseResult.Failed("Bon kon niet automatisch worden uitgelezen: de AI-provider reageerde niet op tijd.");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
