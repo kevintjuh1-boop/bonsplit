@@ -77,7 +77,10 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
             var parameters = new MessageCreateParams
             {
                 Model = modelId,
-                MaxTokens = 4096,
+                // Room for the full structured JSON output on a receipt with many line items — this
+                // budget is no longer shared with thinking (disabled below), so it only needs to cover
+                // the actual response text.
+                MaxTokens = 8192,
                 System = SystemPrompt,
                 Messages =
                 [
@@ -91,6 +94,13 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
                         },
                     },
                 ],
+                // Claude Opus 5 thinks by default (adaptive, effort "high"), and MaxTokens caps
+                // thinking + output combined. For a real receipt photo that reliably burned the whole
+                // token budget on invisible reasoning before any JSON output was written, leaving
+                // stop_reason=max_tokens and no usable text — confirmed via a raw request against the
+                // API directly. Receipt field extraction is mechanical, not a reasoning task, so
+                // thinking is disabled outright rather than just capped.
+                Thinking = new ThinkingConfigDisabled(),
                 OutputConfig = new OutputConfig { Format = new JsonOutputFormat { Schema = BuildSchema() } },
             };
 
