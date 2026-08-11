@@ -57,10 +57,17 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
 
     public async Task<ReceiptParseResult> ParseAsync(ReceiptParseRequest request, CancellationToken cancellationToken = default)
     {
+        // Without a bound here, a stalled outbound connection to Anthropic (network-level, not an
+        // API error) leaves the caller waiting on the SDK's own ~10 minute default forever from the
+        // user's perspective — bon-analyseren just sits there with no error. A hard deadline turns
+        // that into a fast, clear, recoverable failure instead.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(90));
+
         try
         {
             await using var buffered = new MemoryStream();
-            await request.FileContent.CopyToAsync(buffered, cancellationToken);
+            await request.FileContent.CopyToAsync(buffered, timeoutCts.Token);
             var base64Data = Convert.ToBase64String(buffered.ToArray());
 
             ContentBlockParam documentBlock = request.MimeType == "application/pdf"
@@ -95,7 +102,7 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
             var jsonBuilder = new System.Text.StringBuilder();
             string? stopReason = null;
 
-            await foreach (var streamEvent in client.Messages.CreateStreaming(parameters, cancellationToken: cancellationToken))
+            await foreach (var streamEvent in client.Messages.CreateStreaming(parameters, cancellationToken: timeoutCts.Token))
             {
                 if (streamEvent.TryPickContentBlockDelta(out var contentDelta) && contentDelta.Delta.TryPickText(out var textDelta))
                 {
@@ -122,6 +129,11 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
             }
 
             return MapToResult(jsonText);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogError("Receipt parsing via Anthropic timed out after 90 seconds (no response received).");
+            return ReceiptParseResult.Failed("Bon kon niet automatisch worden uitgelezen: de AI-provider reageerde niet op tijd.");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
