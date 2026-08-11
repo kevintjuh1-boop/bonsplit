@@ -6,6 +6,7 @@
 @inject ICategoryService CategoryService
 @inject IPersonService PersonService
 @inject NavigationManager Navigation
+@inject ILogger<ReviewReceipt> Logger
 
 <PageTitle>Bon controleren</PageTitle>
 
@@ -583,6 +584,11 @@ else
         catch (ExpenseValidationException ex)
         {
             _saveError = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Saving expense failed unexpectedly for receipt document {DocumentId}", DocumentId);
+            _saveError = "Opslaan is onverwacht mislukt. Probeer het opnieuw.";
         }
         finally
         {
