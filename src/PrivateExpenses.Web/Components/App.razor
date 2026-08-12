@@ -6,6 +6,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <link rel="icon" type="image/svg+xml" href="@Assets["favicon.svg"]" />
+    <script>
+        // Runs synchronously before first paint so an explicit theme choice (set via Instellingen,
+        // persisted in localStorage) applies immediately — without this, the page would briefly flash
+        // the wrong theme before Blazor's circuit connects and could react to it.
+        (function () {
+            var theme = localStorage.getItem('bonsplit_theme');
+            if (theme === 'light' || theme === 'dark') {
+                document.documentElement.setAttribute('data-theme', theme);
+            }
+        })();
+    </script>
     <ResourcePreloader />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

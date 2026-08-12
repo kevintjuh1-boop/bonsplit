@@ -72,6 +72,77 @@
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* Dark mode — overrides the surface/text/soft-tint tokens above. The sidebar, mobile hero, toasts
+   and mint/navy accent buttons stay their fixed dark/navy colors in both themes on purpose (see
+   their own rules below), so they're deliberately not touched here. Applies automatically by system
+   preference unless the user picked an explicit theme (Instellingen), which is persisted via
+   localStorage and applied as [data-theme] on <html> by the inline script in App.razor. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --color-bg: #0f1420;
+        --color-surface: #171d2b;
+        --color-surface-muted: #1e2536;
+        --color-border: #2a3244;
+        --color-border-strong: #3a4358;
+        --color-text: #eef1f6;
+        --color-text-muted: #99a3b8;
+        --color-text-subtle: #6b7690;
+
+        --color-navy-soft: #1a2233;
+
+        --color-mint-soft: rgba(34, 211, 166, .16);
+        --color-mint-text: #5eebc4;
+
+        --color-danger-soft: rgba(239, 68, 68, .18);
+        --color-danger-text: #f87171;
+
+        --color-success-soft: rgba(22, 163, 74, .18);
+        --color-success-text: #4ade80;
+
+        --color-warning-soft: rgba(217, 119, 6, .18);
+        --color-warning-text: #fbbf24;
+
+        --person-blue-soft: rgba(59, 130, 246, .18);
+        --person-violet-soft: rgba(139, 92, 246, .18);
+        --person-amber-soft: rgba(245, 158, 11, .18);
+        --person-emerald-soft: rgba(22, 163, 74, .18);
+        --person-rose-soft: rgba(236, 72, 153, .18);
+        --person-cyan-soft: rgba(6, 182, 212, .18);
+    }
+}
+
+:root[data-theme="dark"] {
+    --color-bg: #0f1420;
+    --color-surface: #171d2b;
+    --color-surface-muted: #1e2536;
+    --color-border: #2a3244;
+    --color-border-strong: #3a4358;
+    --color-text: #eef1f6;
+    --color-text-muted: #99a3b8;
+    --color-text-subtle: #6b7690;
+
+    --color-navy-soft: #1a2233;
+
+    --color-mint-soft: rgba(34, 211, 166, .16);
+    --color-mint-text: #5eebc4;
+
+    --color-danger-soft: rgba(239, 68, 68, .18);
+    --color-danger-text: #f87171;
+
+    --color-success-soft: rgba(22, 163, 74, .18);
+    --color-success-text: #4ade80;
+
+    --color-warning-soft: rgba(217, 119, 6, .18);
+    --color-warning-text: #fbbf24;
+
+    --person-blue-soft: rgba(59, 130, 246, .18);
+    --person-violet-soft: rgba(139, 92, 246, .18);
+    --person-amber-soft: rgba(245, 158, 11, .18);
+    --person-emerald-soft: rgba(22, 163, 74, .18);
+    --person-rose-soft: rgba(236, 72, 153, .18);
+    --person-cyan-soft: rgba(6, 182, 212, .18);
+}
+
 * {
     box-sizing: border-box;
 }
@@ -93,7 +164,7 @@ h1, h2, h3, h4 {
     margin: 0;
     font-weight: 700;
     letter-spacing: -0.01em;
-    color: var(--color-navy);
+    color: var(--color-text);
 }
 
 h1:focus {
@@ -130,7 +201,7 @@ button {
 .logo-word {
     font-weight: 800;
     letter-spacing: -0.02em;
-    color: var(--color-navy);
+    color: var(--color-text);
 }
 
 /* ==========================================================================

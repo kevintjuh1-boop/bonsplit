@@ -1,8 +1,10 @@
 @page "/instellingen"
 @using PrivateExpenses.Application.Abstractions.Services
 @using PrivateExpenses.Web.Services
+@implements IDisposable
 @inject IPersonService PersonService
 @inject CurrentPersonState CurrentPerson
+@inject IJSRuntime JS
 
 <PageTitle>Instellingen</PageTitle>
 
@@ -36,13 +38,49 @@
                 </button>
             }
         </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="text-muted text-sm">Thema</span>
+            <div class="person-row">
+                <button type="button" class="pill-filter @(_theme is null ? "active" : "")" @onclick='() => SetThemeAsync(null)'>Systeem</button>
+                <button type="button" class="pill-filter @(_theme == "light" ? "active" : "")" @onclick='() => SetThemeAsync("light")'>Licht</button>
+                <button type="button" class="pill-filter @(_theme == "dark" ? "active" : "")" @onclick='() => SetThemeAsync("dark")'>Donker</button>
+            </div>
+        </div>
     </div>
 </div>
 
 @code {
+    private const string ThemeStorageKey = "bonsplit_theme";
+
     private string? _currentPersonName;
+    private string? _theme;
 
     protected override async Task OnInitializedAsync()
+    {
+        CurrentPerson.Changed += OnCurrentPersonChanged;
+        await LoadCurrentPersonNameAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        // JS interop (including localStorage) isn't available during the static prerender pass that
+        // OnInitializedAsync runs in — has to happen here instead, once the circuit is connected.
+        _theme = await JS.InvokeAsync<string?>("localStorage.getItem", ThemeStorageKey);
+        StateHasChanged();
+    }
+
+    private void OnCurrentPersonChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadCurrentPersonNameAsync();
+        StateHasChanged();
+    });
+
+    private async Task LoadCurrentPersonNameAsync()
     {
         if (CurrentPerson.CurrentPersonId is { } id)
         {
@@ -50,4 +88,21 @@
             _currentPersonName = person?.Name;
         }
     }
+
+    private async Task SetThemeAsync(string? theme)
+    {
+        _theme = theme;
+        if (theme is null)
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", ThemeStorageKey);
+            await JS.InvokeVoidAsync("document.documentElement.removeAttribute", "data-theme");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", ThemeStorageKey, theme);
+            await JS.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", theme);
+        }
+    }
+
+    public void Dispose() => CurrentPerson.Changed -= OnCurrentPersonChanged;
 }
