@@ -146,7 +146,7 @@ public class ExpenseServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task CreateAsync_WithReceiptDocument_NotifiesEveryoneExceptTheUploader()
+    public async Task CreateAsync_WithReceiptDocument_NotifiesEveryoneIncludingTheUploader()
     {
         Guid documentId;
         await using (var uow = await _db.UnitOfWorkFactory.CreateAsync())
@@ -181,7 +181,10 @@ public class ExpenseServiceTests : IAsyncLifetime
         var wesleyNotifications = await verifyUow.Notifications.GetForPersonAsync(_wesley.Id, 10);
         var josNotifications = await verifyUow.Notifications.GetForPersonAsync(_jos.Id, 10);
 
-        Assert.Empty(kevinNotifications);
+        var kevinNotification = Assert.Single(kevinNotifications);
+        Assert.Equal(expenseId, kevinNotification.ExpenseId);
+        Assert.Contains("Je bon is opgeslagen", kevinNotification.Message);
+        Assert.Contains("Lidl", kevinNotification.Message);
 
         var wesleyNotification = Assert.Single(wesleyNotifications);
         Assert.Equal(expenseId, wesleyNotification.ExpenseId);

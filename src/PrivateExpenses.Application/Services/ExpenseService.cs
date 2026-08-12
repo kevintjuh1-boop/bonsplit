@@ -103,15 +103,18 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
                 uow.ReceiptDocuments.Update(document);
 
                 var actorName = persons.FirstOrDefault(p => p.Id == request.CreatedByPersonId)?.Name ?? "Iemand";
-                var recipientIds = persons.Select(p => p.Id).Where(id => id != request.CreatedByPersonId);
-                foreach (var recipientId in recipientIds)
+                foreach (var person in persons)
                 {
+                    var message = person.Id == request.CreatedByPersonId
+                        ? $"Je bon is opgeslagen: {expense.MerchantName}"
+                        : $"{actorName} heeft een bon toegevoegd: {expense.MerchantName}";
+
                     await uow.Notifications.AddAsync(new Notification
                     {
                         Id = Guid.NewGuid(),
-                        Message = $"{actorName} heeft een bon toegevoegd: {expense.MerchantName}",
+                        Message = message,
                         ExpenseId = expense.Id,
-                        RecipientPersonId = recipientId,
+                        RecipientPersonId = person.Id,
                         ActorPersonId = request.CreatedByPersonId,
                         CreatedAt = now,
                     }, cancellationToken);
