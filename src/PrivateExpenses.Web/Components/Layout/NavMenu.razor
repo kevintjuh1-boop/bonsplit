@@ -1,3 +1,6 @@
+@using PrivateExpenses.Web.Services
+@inject CurrentPersonState CurrentPerson
+
 <div class="app-brand">
     <BonSplitLogo Size="30" ShowWordmark="true" WordmarkSize="17" BackgroundColor="var(--color-navy)" WordmarkColor="white" />
 </div>
@@ -30,5 +33,10 @@
 </nav>
 
 <div class="app-nav-spacer"></div>
+
+<button type="button" class="app-nav-link" style="border:none;background:none;width:100%;text-align:left;font:inherit;cursor:pointer;" @onclick="() => CurrentPerson.RequestChange()">
+    <span class="app-nav-icon"><Icon Name="log-out" /></span>
+    Uitloggen
+</button>
 
 <p class="text-sm" style="padding:0 8px;color:rgba(255,255,255,.45);">Privé · Kevin, Wesley &amp; Jos</p>

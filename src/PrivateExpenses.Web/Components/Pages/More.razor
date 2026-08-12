@@ -1,4 +1,6 @@
 @page "/meer"
+@using PrivateExpenses.Web.Services
+@inject CurrentPersonState CurrentPerson
 
 <PageTitle>Meer</PageTitle>
 
@@ -20,5 +22,9 @@
             <span class="list-row-main"><span class="list-row-title">Instellingen</span></span>
             <Icon Name="chevron-right" Size="18" />
         </a>
+        <button type="button" class="list-row clickable" style="border:none;background:none;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;" @onclick="() => CurrentPerson.RequestChange()">
+            <span class="list-row-icon"><Icon Name="log-out" Size="18" /></span>
+            <span class="list-row-main"><span class="list-row-title">Uitloggen</span></span>
+        </button>
     </div>
 </div>
