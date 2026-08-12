@@ -21,7 +21,7 @@
             <div class="notification-panel-header">Meldingen</div>
             @if (_loading)
             {
-                <p class="text-muted text-sm" style="padding:16px;">Laden...</p>
+                <LoadingSpinner Size="24" />
             }
             else if (_notifications.Count == 0)
             {

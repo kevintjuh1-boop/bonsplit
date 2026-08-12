@@ -102,6 +102,7 @@ else if (_stage != Stage.Error)
                         @step.Value
                         @if (current && step.Key == Stage.Analyzing)
                         {
+                            <LoadingSpinner Size="14" Centered="false" />
                             <span class="text-muted"> — @_analyzingSeconds sec</span>
                         }
                     </span>

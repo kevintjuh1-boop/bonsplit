@@ -1216,6 +1216,10 @@ a.list-row:hover, .list-row.clickable:hover {
     to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes logoSpin {
+    to { transform: rotate(360deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
         animation-duration: 0.001ms !important;

@@ -1,0 +1,14 @@
+@* A spinning BonSplit logo mark, used wherever the app would otherwise just show "Laden…" text. A
+   <span> (not <div>) so it also nests cleanly inline next to other text, e.g. a seconds counter. *@
+<span style="@ContainerStyle">
+    <BonSplitLogo Size="@Size" ShowWordmark="false" Style="animation: logoSpin 1s linear infinite;" />
+</span>
+
+@code {
+    [Parameter] public int Size { get; set; } = 40;
+    [Parameter] public bool Centered { get; set; } = true;
+
+    private string ContainerStyle => Centered
+        ? "display:flex;justify-content:center;padding:40px 0;"
+        : "display:inline-flex;";
+}
