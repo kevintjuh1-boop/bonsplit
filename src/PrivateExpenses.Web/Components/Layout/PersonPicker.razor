@@ -1,57 +1,124 @@
 @using PrivateExpenses.Application.Abstractions.Services
 @using PrivateExpenses.Web.Services
 @using PrivateExpenses.Web.Support
+@implements IDisposable
 @inject IPersonService PersonService
 @inject CurrentPersonState CurrentPerson
 @inject IJSRuntime JS
 
-@if (_showPicker)
+@if (!_ready)
 {
-    <div class="person-picker-overlay">
-        <div class="card card-padded" style="max-width:360px;width:100%;">
-            <div class="stack" style="gap:14px;text-align:center;">
-                <div>
-                    <h2 class="page-title" style="font-size:18px;">Wie ben jij?</h2>
-                    <p class="text-muted text-sm" style="margin-top:4px;">
-                        Zodat uitgaven en meldingen aan de juiste persoon gekoppeld worden.
-                    </p>
-                </div>
-                <div class="stack" style="gap:8px;">
-                    @foreach (var person in _people)
-                    {
-                        <button type="button" class="btn btn-secondary btn-block" style="justify-content:flex-start;gap:10px;" @onclick="() => SelectAsync(person.Id)">
-                            <span class="avatar avatar-sm" style="@PersonColorPalette.AvatarStyle(person.ColorKey)">@person.Initial</span>
-                            @person.Name
-                        </button>
-                    }
-                </div>
-                @if (CurrentPerson.CurrentPersonId is not null)
+    <LoadingSpinner />
+}
+else if (_showPicker)
+{
+    <div class="person-gate">
+        <div class="person-gate-card">
+            <BonSplitLogo Size="40" ShowWordmark="true" WordmarkSize="24" Style="justify-content:center;margin-bottom:10px;" />
+            <h1 class="person-gate-title">Wie gebruikt BonSplit?</h1>
+            <p class="text-muted">Kies je naam om verder te gaan.</p>
+
+            <div class="person-gate-grid">
+                @foreach (var person in _people)
                 {
-                    <button type="button" class="btn btn-ghost btn-sm" @onclick="() => _showPicker = false">Annuleren</button>
+                    <button type="button" class="person-gate-option" @onclick="() => SelectAsync(person.Id)">
+                        <span class="avatar" style="width:64px;height:64px;font-size:22px;flex-shrink:0;@PersonColorPalette.SolidStyle(person.ColorKey)">@person.Initial</span>
+                        <span class="person-gate-name">
+                            @person.Name
+                            <span class="person-gate-cta">Doorgaan als @person.Name</span>
+                        </span>
+                    </button>
                 }
             </div>
+
+            @if (CurrentPerson.CurrentPersonId is not null)
+            {
+                <button type="button" class="btn btn-ghost" @onclick="() => _showPicker = false">Annuleren</button>
+            }
         </div>
     </div>
 }
+else
+{
+    @ChildContent
+}
 
 <style>
-    .person-picker-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 1000;
+    .person-gate {
+        min-height: 100vh;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(15, 18, 25, .55);
-        padding: 20px;
+        padding: 32px 20px;
+        background: var(--color-bg);
+        animation: cardIn var(--duration-base) var(--ease-standard);
+    }
+
+    .person-gate-card {
+        width: 100%;
+        max-width: 420px;
+        text-align: center;
+    }
+
+    .person-gate-title {
+        margin: 18px 0 4px;
+    }
+
+    .person-gate-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 24px 0;
+    }
+
+    .person-gate-option {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 14px 16px;
+        border-radius: var(--radius-lg);
+        border: 1px solid var(--color-border);
+        background: var(--color-surface);
+        color: var(--color-text);
+        box-shadow: var(--shadow-sm);
+        cursor: pointer;
+        text-align: left;
+        transition: border-color var(--duration-fast) ease, transform var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
+    }
+
+    .person-gate-option:hover {
+        border-color: var(--color-text-subtle);
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-md);
+    }
+
+    .person-gate-option:active {
+        transform: scale(.98);
+    }
+
+    .person-gate-name {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-weight: 700;
+        font-size: 16px;
+    }
+
+    .person-gate-cta {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--color-primary-text);
     }
 </style>
 
-@implements IDisposable
 @code {
     private const string StorageKey = "bonsplit_person_id";
 
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
     private List<PrivateExpenses.Domain.Entities.Person> _people = [];
+    private bool _ready;
     private bool _showPicker;
 
     protected override async Task OnInitializedAsync()
@@ -78,15 +145,21 @@
             return;
         }
 
+        // JS interop (including localStorage) isn't available during the static prerender pass, so
+        // _ready stays false — showing the branded spinner instead of flashing either the picker or
+        // the real app content before we actually know which one belongs on screen.
         var stored = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
         if (Guid.TryParse(stored, out var personId) && _people.Any(p => p.Id == personId))
         {
             CurrentPerson.SetLoaded(personId);
-            return;
+        }
+        else
+        {
+            CurrentPerson.SetLoaded(null);
+            _showPicker = true;
         }
 
-        CurrentPerson.SetLoaded(null);
-        _showPicker = true;
+        _ready = true;
         StateHasChanged();
     }
 

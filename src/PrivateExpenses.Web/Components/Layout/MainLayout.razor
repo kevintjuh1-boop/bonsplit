@@ -1,29 +1,29 @@
 @inherits LayoutComponentBase
 
-<PersonPicker />
+<PersonPicker>
+    <div class="app-shell">
+        <aside class="app-sidebar">
+            <NavMenu />
+        </aside>
 
-<div class="app-shell">
-    <aside class="app-sidebar">
-        <NavMenu />
-    </aside>
+        <div class="app-main">
+            <header class="app-topbar-mobile">
+                <BonSplitLogo Size="26" WordmarkSize="16" />
+                <NotificationBell />
+            </header>
 
-    <div class="app-main">
-        <header class="app-topbar-mobile">
-            <BonSplitLogo Size="26" WordmarkSize="16" />
-            <NotificationBell />
-        </header>
+            <div class="app-topbar-desktop">
+                <NotificationBell />
+            </div>
 
-        <div class="app-topbar-desktop">
-            <NotificationBell />
+            <main class="app-content">
+                @Body
+            </main>
+
+            <BottomNav />
         </div>
-
-        <main class="app-content">
-            @Body
-        </main>
-
-        <BottomNav />
     </div>
-</div>
+</PersonPicker>
 
 <div id="blazor-error-ui" data-nosnippet>
     Er is een onverwachte fout opgetreden.
