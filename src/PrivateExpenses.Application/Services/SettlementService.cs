@@ -2,6 +2,7 @@ using PrivateExpenses.Application.Abstractions.Persistence;
 using PrivateExpenses.Application.Abstractions.Services;
 using PrivateExpenses.Application.Exceptions;
 using PrivateExpenses.Domain.Entities;
+using PrivateExpenses.Domain.Money;
 
 namespace PrivateExpenses.Application.Services;
 
@@ -34,15 +35,11 @@ public class SettlementService(IUnitOfWorkFactory unitOfWorkFactory) : ISettleme
 
         await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
 
-        if (await uow.Persons.GetByIdAsync(fromPersonId, cancellationToken) is null)
-        {
-            throw new ExpenseValidationException("De betaler bestaat niet (meer).");
-        }
+        var fromPerson = await uow.Persons.GetByIdAsync(fromPersonId, cancellationToken)
+            ?? throw new ExpenseValidationException("De betaler bestaat niet (meer).");
 
-        if (await uow.Persons.GetByIdAsync(toPersonId, cancellationToken) is null)
-        {
-            throw new ExpenseValidationException("De ontvanger bestaat niet (meer).");
-        }
+        var toPerson = await uow.Persons.GetByIdAsync(toPersonId, cancellationToken)
+            ?? throw new ExpenseValidationException("De ontvanger bestaat niet (meer).");
 
         var settlement = new Settlement
         {
@@ -56,6 +53,26 @@ public class SettlementService(IUnitOfWorkFactory unitOfWorkFactory) : ISettleme
         };
 
         await uow.Settlements.AddAsync(settlement, cancellationToken);
+
+        var now = DateTime.UtcNow;
+        var formattedAmount = MoneyFormatter.Format(amountCents);
+        await uow.Notifications.AddAsync(new Notification
+        {
+            Id = Guid.NewGuid(),
+            Message = $"{fromPerson.Name} heeft {formattedAmount} aan jou betaald.",
+            RecipientPersonId = toPersonId,
+            ActorPersonId = fromPersonId,
+            CreatedAt = now,
+        }, cancellationToken);
+        await uow.Notifications.AddAsync(new Notification
+        {
+            Id = Guid.NewGuid(),
+            Message = $"Je hebt {formattedAmount} aan {toPerson.Name} betaald.",
+            RecipientPersonId = fromPersonId,
+            ActorPersonId = fromPersonId,
+            CreatedAt = now,
+        }, cancellationToken);
+
         await uow.SaveChangesAsync(cancellationToken);
 
         return settlement.Id;

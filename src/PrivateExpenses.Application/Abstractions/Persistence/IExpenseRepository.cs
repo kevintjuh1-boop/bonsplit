@@ -22,6 +22,10 @@ public interface IExpenseRepository
 
     Task<long> GetTotalCentsThisMonthAsync(DateOnly monthStart, DateOnly monthEndExclusive, CancellationToken cancellationToken = default);
 
+    /// <summary>Sum of all discount item lines (stored as negative cents) within the date range, across
+    /// non-deleted expenses — returned as a positive amount representing money saved.</summary>
+    Task<long> GetTotalSavedFromDiscountsAsync(DateOnly rangeStart, DateOnly rangeEndExclusive, CancellationToken cancellationToken = default);
+
     /// <summary>Loads filtered expenses with the item/share/payment graph needed for CSV export, in
     /// one query rather than one per expense.</summary>
     Task<List<Expense>> GetForExportAsync(ExpenseFilter filter, CancellationToken cancellationToken = default);

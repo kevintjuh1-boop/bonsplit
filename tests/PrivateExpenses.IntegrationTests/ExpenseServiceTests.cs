@@ -200,6 +200,46 @@ public class ExpenseServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetMonthSavingsCentsAsync_SumsDiscountLinesAsAPositiveAmount_ExcludingOtherMonthsAndDeletedExpenses()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var monthStart = new DateOnly(today.Year, today.Month, 1);
+
+        var inMonthExpenseId = await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Lidl",
+            ExpenseDate = today,
+            TotalCents = 500,
+            Items =
+            [
+                new ExpenseItemInput { Description = "Kiwi", TotalCents = 600, ParticipantPersonIdsInOrder = [_kevin.Id] },
+                new ExpenseItemInput { Description = "1+1 gratis", TotalCents = -100, IsDiscount = true, ParticipantPersonIdsInOrder = [_kevin.Id] },
+            ],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 500 }],
+        });
+
+        // A discount from last month must not count toward this month's total.
+        await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Lidl vorige maand",
+            ExpenseDate = monthStart.AddDays(-1),
+            TotalCents = 100,
+            Items =
+            [
+                new ExpenseItemInput { Description = "Product", TotalCents = 150, ParticipantPersonIdsInOrder = [_kevin.Id] },
+                new ExpenseItemInput { Description = "Korting", TotalCents = -50, IsDiscount = true, ParticipantPersonIdsInOrder = [_kevin.Id] },
+            ],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 100 }],
+        });
+
+        Assert.Equal(100, await _service.GetMonthSavingsCentsAsync(monthStart));
+
+        // A soft-deleted expense's discounts must not count either.
+        await _service.SoftDeleteAsync(inMonthExpenseId);
+        Assert.Equal(0, await _service.GetMonthSavingsCentsAsync(monthStart));
+    }
+
+    [Fact]
     public async Task CreateManualExpenseAsync_DoesNotNotifyAnyone()
     {
         await _service.CreateManualExpenseAsync(new ManualExpenseRequest

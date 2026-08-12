@@ -17,6 +17,11 @@ public sealed class ReceiptParseResult
     public long? TotalCents { get; init; }
     public string? PaymentMethod { get; init; }
 
+    /// <summary>Best-matching category name from the app's fixed category list, when the provider
+    /// could confidently determine one from the merchant/items. Null when uncertain — matched
+    /// case-insensitively against existing categories by the caller, never trusted as an exact key.</summary>
+    public string? SuggestedCategoryName { get; init; }
+
     public List<ReceiptParsedItem> Items { get; init; } = [];
     public List<string> ConfidenceWarnings { get; init; } = [];
 

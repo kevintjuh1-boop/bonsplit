@@ -7,6 +7,22 @@ namespace PrivateExpenses.Infrastructure.Persistence.Seed;
 /// startup — each part only inserts data when the corresponding table is empty.</summary>
 public static class DbSeeder
 {
+    /// <summary>The fixed category list, shared with <see cref="Parsing.AnthropicVisionReceiptParser"/>
+    /// so its category suggestions always match a name that actually exists in this app.</summary>
+    public static readonly (string Name, string IconKey)[] FixedCategories =
+    [
+        ("Boodschappen", "shopping-cart"),
+        ("Eten & drinken", "utensils"),
+        ("Wonen", "home"),
+        ("Vervoer", "car"),
+        ("Uitgaan", "party"),
+        ("Abonnementen", "repeat"),
+        ("Vakantie", "plane"),
+        ("Winkelen", "shopping-bag"),
+        ("Gezondheid", "heart-pulse"),
+        ("Overig", "more-horizontal"),
+    ];
+
     public static async Task SeedCoreDataAsync(PrivateExpensesDbContext context, CancellationToken cancellationToken = default)
     {
         if (!await context.People.AnyAsync(cancellationToken))
@@ -34,22 +50,8 @@ public static class DbSeeder
 
         if (!await context.Categories.AnyAsync(cancellationToken))
         {
-            var categories = new[]
-            {
-                ("Boodschappen", "shopping-cart"),
-                ("Eten & drinken", "utensils"),
-                ("Wonen", "home"),
-                ("Vervoer", "car"),
-                ("Uitgaan", "party"),
-                ("Abonnementen", "repeat"),
-                ("Vakantie", "plane"),
-                ("Winkelen", "shopping-bag"),
-                ("Gezondheid", "heart-pulse"),
-                ("Overig", "more-horizontal"),
-            };
-
             var sortOrder = 0;
-            foreach (var (name, icon) in categories)
+            foreach (var (name, icon) in FixedCategories)
             {
                 context.Categories.Add(new Category { Id = Guid.NewGuid(), Name = name, IconKey = icon, SortOrder = sortOrder++ });
             }

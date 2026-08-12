@@ -82,6 +82,13 @@ else
                 <span class="stat-tile-label">Voorgeschoten</span>
                 <span class="stat-tile-value">@MoneyFormatter.Format(_selectedBalance?.TotalPaidCents ?? 0)</span>
             </div>
+            @if (_monthSavingsCents > 0)
+            {
+                <div class="stat-tile">
+                    <span class="stat-tile-label">Bespaard deze maand</span>
+                    <span class="stat-tile-value positive">@MoneyFormatter.Format(_monthSavingsCents)</span>
+                </div>
+            }
         </div>
 
         <div class="card card-padded" style="margin-bottom:20px;">
@@ -162,6 +169,7 @@ else
     private List<SuggestedDebtDto> _suggestedDebts = [];
     private PersonBalanceDto? _selectedBalance;
     private long _monthTotalCents;
+    private long _monthSavingsCents;
     private bool _hasAnyExpenses;
     private bool _loading = true;
 
@@ -187,6 +195,7 @@ else
         var today = DateOnly.FromDateTime(DateTime.Today);
         var monthStart = new DateOnly(today.Year, today.Month, 1);
         _monthTotalCents = await ExpenseService.GetMonthTotalCentsAsync(monthStart);
+        _monthSavingsCents = await ExpenseService.GetMonthSavingsCentsAsync(monthStart);
 
         _recentExpenses = await ExpenseService.GetRecentAsync(6);
         _hasAnyExpenses = _recentExpenses.Count > 0;

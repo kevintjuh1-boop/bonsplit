@@ -74,4 +74,21 @@ public class BalanceAndSettlementTests : IAsyncLifetime
 
         Assert.Empty(debts);
     }
+
+    [Fact]
+    public async Task CreateAsync_RegistersASettlement_NotifiesBothTheReceiverAndThePayer()
+    {
+        await _settlementService.CreateAsync(_wesley.Id, _kevin.Id, 1738, DateOnly.FromDateTime(DateTime.Today), note: null);
+
+        await using var uow = await _db.UnitOfWorkFactory.CreateAsync();
+        var kevinNotification = Assert.Single(await uow.Notifications.GetForPersonAsync(_kevin.Id, 10));
+        Assert.Contains("Wesley", kevinNotification.Message);
+        Assert.Contains("17,38", kevinNotification.Message);
+
+        var wesleyNotification = Assert.Single(await uow.Notifications.GetForPersonAsync(_wesley.Id, 10));
+        Assert.Contains("Kevin", wesleyNotification.Message);
+        Assert.Contains("17,38", wesleyNotification.Message);
+
+        Assert.Empty(await uow.Notifications.GetForPersonAsync(_jos.Id, 10));
+    }
 }

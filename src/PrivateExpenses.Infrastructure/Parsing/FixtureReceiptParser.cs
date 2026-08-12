@@ -39,6 +39,7 @@ public class FixtureReceiptParser(ILogger<FixtureReceiptParser> logger) : IRecei
             TotalCents = total,
             SubtotalCents = total,
             PaymentMethod = "PIN",
+            SuggestedCategoryName = "Boodschappen",
             Items = items,
             ConfidenceWarnings = ["Dit is voorbeelddata van de fixture-parser, geen echte bonherkenning."],
         };

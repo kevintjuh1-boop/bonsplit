@@ -420,6 +420,11 @@ else
             _expenseDate = _parseResult.Date?.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today;
             _totalText = MoneyFormatter.Format(_parseResult.TotalCents ?? 0).Replace("€", "").Trim();
 
+            if (_categoryId is null && _parseResult.SuggestedCategoryName is { } suggestedCategoryName)
+            {
+                _categoryId = _categories.FirstOrDefault(c => string.Equals(c.Name, suggestedCategoryName, StringComparison.OrdinalIgnoreCase))?.Id;
+            }
+
             _items.Clear();
             foreach (var parsed in _parseResult.Items)
             {

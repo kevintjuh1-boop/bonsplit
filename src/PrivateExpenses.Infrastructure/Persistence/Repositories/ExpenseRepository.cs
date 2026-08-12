@@ -67,6 +67,18 @@ public class ExpenseRepository(PrivateExpensesDbContext context) : IExpenseRepos
         return sum ?? 0;
     }
 
+    public async Task<long> GetTotalSavedFromDiscountsAsync(DateOnly rangeStart, DateOnly rangeEndExclusive, CancellationToken cancellationToken = default)
+    {
+        var sum = await context.ExpenseItems
+            .Where(i => i.IsDiscount
+                && !i.Expense!.IsDeleted
+                && i.Expense.ExpenseDate >= rangeStart
+                && i.Expense.ExpenseDate < rangeEndExclusive)
+            .SumAsync(i => (long?)i.TotalCents, cancellationToken);
+
+        return Math.Abs(sum ?? 0);
+    }
+
     public async Task<List<Expense>> GetForExportAsync(ExpenseFilter filter, CancellationToken cancellationToken = default)
     {
         var query = ApplyFilter(context.Expenses.AsNoTracking().Where(e => !e.IsDeleted), filter)

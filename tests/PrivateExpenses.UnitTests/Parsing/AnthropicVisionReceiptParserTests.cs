@@ -28,6 +28,31 @@ public class AnthropicVisionReceiptParserTests
         Assert.Equal("1+1 gratis", item.PromotionLabel);
     }
 
+    [Theory]
+    [InlineData("Boodschappen", "Boodschappen")]
+    [InlineData("boodschappen", "Boodschappen")]
+    [InlineData(" Eten & drinken ", "Eten & drinken")]
+    public void MapToResult_SuggestedCategoryMatchingAKnownCategory_IsAcceptedCaseInsensitively(string suggested, string expected)
+    {
+        var json = $$"""{ "merchantName": "Lidl", "suggestedCategory": "{{suggested}}", "items": [] }""";
+
+        var result = Parser.MapToResult(json);
+
+        Assert.Equal(expected, result.SuggestedCategoryName);
+    }
+
+    [Fact]
+    public void MapToResult_SuggestedCategoryNotInTheFixedList_IsDropped()
+    {
+        // Never trust a hallucinated or malformed category name — the caller matches this straight
+        // against real Category rows, so an unknown name must come through as null, not as garbage.
+        const string json = """{ "merchantName": "Lidl", "suggestedCategory": "Huisdieren", "items": [] }""";
+
+        var result = Parser.MapToResult(json);
+
+        Assert.Null(result.SuggestedCategoryName);
+    }
+
     [Fact]
     public void MapToResult_ItemWithoutPromotionLabel_LeavesItNull()
     {

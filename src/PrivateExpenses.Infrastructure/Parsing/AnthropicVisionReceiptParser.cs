@@ -5,6 +5,7 @@ using Anthropic.Models.Messages;
 using Microsoft.Extensions.Logging;
 using PrivateExpenses.Application.Abstractions.Parsing;
 using PrivateExpenses.Application.Dtos.Receipts;
+using PrivateExpenses.Infrastructure.Persistence.Seed;
 
 namespace PrivateExpenses.Infrastructure.Parsing;
 
@@ -25,7 +26,15 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
 {
     public string ProviderName => "anthropic-vision";
 
-    private const string SystemPrompt = """
+    /// <summary>Built (not const) so the category list is always the same names as
+    /// <see cref="Persistence.Seed.DbSeeder.FixedCategories"/> — a suggestion naming a category that
+    /// doesn't actually exist in the app would just fail to match and get silently dropped.</summary>
+    private static readonly string SystemPrompt = BuildSystemPrompt();
+
+    private static string CategoryListForPrompt { get; } =
+        string.Join(", ", DbSeeder.FixedCategories.Select(c => $"\"{c.Name}\""));
+
+    private static string BuildSystemPrompt() => $$"""
         You are extracting structured data from a photo or PDF of a shop receipt or invoice, for a
         private expense-splitting app used by three housemates in the Netherlands.
 
@@ -58,6 +67,11 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
         - If you are meaningfully uncertain about the overall reading (blurry image, cut-off receipt,
           handwriting, etc.), add a short plain-language note to confidenceWarnings explaining what is
           uncertain. Leave confidenceWarnings empty if you are confident.
+        - Based on the merchant name and the kind of items purchased, suggest the single best-fitting
+          category for this receipt from this exact fixed list (case-sensitive, copy the name exactly):
+          {{CategoryListForPrompt}}.
+          Put your choice in suggestedCategory. If none of them genuinely fits, or you're not confident
+          enough to choose, set suggestedCategory to null rather than picking an arbitrary one.
 
         Respond with ONLY a single JSON object matching exactly this shape — no markdown fences, no
         commentary, nothing before or after it:
@@ -72,6 +86,7 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
           "taxAmount": string | null,
           "totalAmount": string | null,
           "paymentMethod": string | null,
+          "suggestedCategory": string | null,
           "items": [
             {
               "description": string,
@@ -256,6 +271,7 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
             TaxCents = ParseAmountToCentsOrNull(raw.TaxAmount),
             TotalCents = ParseAmountToCentsOrNull(raw.TotalAmount),
             PaymentMethod = string.IsNullOrWhiteSpace(raw.PaymentMethod) ? null : raw.PaymentMethod.Trim(),
+            SuggestedCategoryName = MatchKnownCategoryNameOrNull(raw.SuggestedCategory),
             Items = items,
             ConfidenceWarnings = raw.ConfidenceWarnings?.Where(w => !string.IsNullOrWhiteSpace(w)).ToList() ?? [],
         };
@@ -278,6 +294,14 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
 
         return (long)Math.Round(amount * 100, MidpointRounding.AwayFromZero);
     }
+
+    /// <summary>Only trusts a model-suggested category name that exactly matches (case-insensitive)
+    /// one of the app's real fixed categories — never lets a hallucinated or malformed name through,
+    /// since the caller matches this straight against existing Category rows.</summary>
+    private static string? MatchKnownCategoryNameOrNull(string? suggested) =>
+        string.IsNullOrWhiteSpace(suggested)
+            ? null
+            : DbSeeder.FixedCategories.FirstOrDefault(c => string.Equals(c.Name, suggested.Trim(), StringComparison.OrdinalIgnoreCase)).Name;
 
     private static decimal? ParseDecimalOrNull(string? value) =>
         !string.IsNullOrWhiteSpace(value) && decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var d) ? d : null;
@@ -302,6 +326,7 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
         public string? TaxAmount { get; set; }
         public string? TotalAmount { get; set; }
         public string? PaymentMethod { get; set; }
+        public string? SuggestedCategory { get; set; }
         public List<RawReceiptItem>? Items { get; set; }
         public List<string>? ConfidenceWarnings { get; set; }
     }
