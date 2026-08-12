@@ -36,6 +36,10 @@ public sealed class ReceiptParsedItem
     public bool IsDiscount { get; init; }
     public bool IsDeposit { get; init; }
 
+    /// <summary>Human-readable promotion type when the provider could identify one (e.g. "1+1
+    /// gratis", "20% korting"). Null when not a discount or the type wasn't identifiable.</summary>
+    public string? PromotionLabel { get; init; }
+
     /// <summary>0.0–1.0 confidence from the provider, when it reports one. Null when the provider
     /// doesn't supply confidence — never invented (section 84).</summary>
     public double? Confidence { get; init; }

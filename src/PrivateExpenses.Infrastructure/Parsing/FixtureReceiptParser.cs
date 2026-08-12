@@ -25,7 +25,7 @@ public class FixtureReceiptParser(ILogger<FixtureReceiptParser> logger) : IRecei
             new() { Description = "Kaas jong belegen 500g", Quantity = 1, UnitPriceCents = 695, TotalPriceCents = 695, Confidence = 0.9 },
             new() { Description = "Cola 1.5L", Quantity = 1, UnitPriceCents = 229, TotalPriceCents = 229, Confidence = 0.92 },
             new() { Description = "Statiegeld", Quantity = 1, TotalPriceCents = 25, IsDeposit = true, Confidence = 0.8 },
-            new() { Description = "Bonuskorting", TotalPriceCents = -100, IsDiscount = true, Confidence = 0.75 },
+            new() { Description = "Bonuskorting", TotalPriceCents = -100, IsDiscount = true, PromotionLabel = "1+1 gratis", Confidence = 0.75 },
         };
 
         var total = items.Sum(i => i.TotalPriceCents ?? 0);

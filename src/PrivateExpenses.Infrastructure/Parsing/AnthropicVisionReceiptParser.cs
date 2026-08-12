@@ -41,6 +41,12 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
           transaction/receipt number, or similar metadata.
         - DO include as items: discounts (mark isDiscount=true, keep the negative sign), deposits /
           statiegeld (mark isDeposit=true), and any other real financial line tied to a product.
+        - When isDiscount is true, also try to identify the specific promotion type from the printed
+          text or any nearby product line it clearly belongs to (Dutch supermarket receipts often
+          print cryptic codes like "BONUSKORT" or "1+1GRATIS") and put a short, human-readable Dutch
+          label in promotionLabel — e.g. "1+1 gratis", "2e halve prijs", "3 voor 2", "20% korting".
+          If the specific type genuinely can't be determined from what's printed, leave it null rather
+          than guessing.
         - If a field is not visible or you are not confident about it, set it to null. Do not guess a
           plausible-looking value to fill a gap.
         - Never infer a price for an item whose price is not printed.
@@ -74,6 +80,7 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
               "totalPriceAmount": string | null,
               "isDiscount": boolean,
               "isDeposit": boolean,
+              "promotionLabel": string | null,
               "confidence": number | null,
               "sourceText": string | null
             }
@@ -200,7 +207,9 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
         }
     }
 
-    private ReceiptParseResult MapToResult(string jsonText)
+    /// <summary>Internal (not private) so unit tests can exercise the raw-JSON-to-DTO mapping
+    /// directly without a live API call.</summary>
+    internal ReceiptParseResult MapToResult(string jsonText)
     {
         RawReceipt? raw;
         try
@@ -228,6 +237,7 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
                 TotalPriceCents = ParseAmountToCentsOrNull(i.TotalPriceAmount),
                 IsDiscount = i.IsDiscount,
                 IsDeposit = i.IsDeposit,
+                PromotionLabel = string.IsNullOrWhiteSpace(i.PromotionLabel) ? null : i.PromotionLabel.Trim(),
                 Confidence = i.Confidence,
                 SourceText = i.SourceText,
             })
@@ -304,6 +314,7 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
         public string? TotalPriceAmount { get; set; }
         public bool IsDiscount { get; set; }
         public bool IsDeposit { get; set; }
+        public string? PromotionLabel { get; set; }
         public double? Confidence { get; set; }
         public string? SourceText { get; set; }
     }

@@ -201,6 +201,10 @@ else
                                     <label class="text-sm text-muted" style="display:flex;align-items:center;gap:4px;">
                                         <input type="checkbox" @bind="item.IsDiscount" /> Korting
                                     </label>
+                                    @if (item.IsDiscount && !string.IsNullOrWhiteSpace(item.PromotionLabel))
+                                    {
+                                        <span class="badge badge-warning">@item.PromotionLabel</span>
+                                    }
                                     <label class="text-sm text-muted" style="display:flex;align-items:center;gap:4px;">
                                         <input type="checkbox" @bind="item.IsDeposit" /> Statiegeld
                                     </label>
@@ -426,6 +430,7 @@ else
                     TotalCents = parsed.TotalPriceCents ?? 0,
                     IsDiscount = parsed.IsDiscount,
                     IsDeposit = parsed.IsDeposit,
+                    PromotionLabel = parsed.PromotionLabel,
                     Confidence = parsed.Confidence,
                 });
             }
@@ -580,6 +585,7 @@ else
                     TotalCents = i.TotalCents,
                     IsDiscount = i.IsDiscount,
                     IsDeposit = i.IsDeposit,
+                    PromotionLabel = i.PromotionLabel,
                     ParticipantPersonIdsInOrder = _people.Where(p => i.ParticipantIds.Contains(p.Id)).Select(p => p.Id).ToList(),
                     CustomShareCents = i.CustomSplitEnabled ? i.BuildCustomShareCents() : null,
                 }).ToList(),
@@ -611,6 +617,7 @@ else
         public long TotalCents { get; set; }
         public bool IsDiscount { get; set; }
         public bool IsDeposit { get; set; }
+        public string? PromotionLabel { get; set; }
         public double? Confidence { get; set; }
         public bool Selected { get; set; }
         public HashSet<Guid> ParticipantIds { get; set; } = [];

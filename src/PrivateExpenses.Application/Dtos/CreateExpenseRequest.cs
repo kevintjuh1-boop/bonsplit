@@ -8,6 +8,7 @@ public sealed class ExpenseItemInput
     public required long TotalCents { get; init; }
     public bool IsDiscount { get; init; }
     public bool IsDeposit { get; init; }
+    public string? PromotionLabel { get; init; }
 
     /// <summary>People this line is split equally between, in a stable order (earliest gets any
     /// leftover cent). Ignored when <see cref="CustomShareCents"/> is supplied.</summary>

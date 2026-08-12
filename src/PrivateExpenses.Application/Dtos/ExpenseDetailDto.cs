@@ -10,6 +10,7 @@ public sealed record ExpenseItemDto(
     long TotalCents,
     bool IsDiscount,
     bool IsDeposit,
+    string? PromotionLabel,
     int SortOrder,
     IReadOnlyList<ExpenseItemShareDto> Shares);
 

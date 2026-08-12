@@ -260,6 +260,7 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
                 SortOrder = sortOrder++,
                 IsDiscount = input.IsDiscount,
                 IsDeposit = input.IsDeposit,
+                PromotionLabel = string.IsNullOrWhiteSpace(input.PromotionLabel) ? null : input.PromotionLabel.Trim(),
                 CreatedAt = DateTime.UtcNow,
             };
 
@@ -295,7 +296,7 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
         var items = expense.Items
             .OrderBy(i => i.SortOrder)
             .Select(i => new ExpenseItemDto(
-                i.Id, i.Description, i.Quantity, i.UnitPriceCents, i.TotalCents, i.IsDiscount, i.IsDeposit, i.SortOrder,
+                i.Id, i.Description, i.Quantity, i.UnitPriceCents, i.TotalCents, i.IsDiscount, i.IsDeposit, i.PromotionLabel, i.SortOrder,
                 i.Shares.Select(s => new ExpenseItemShareDto(s.PersonId, s.Person!.Name, s.Person.Initial, s.Person.ColorKey, s.AmountCents)).ToList()))
             .ToList();
 

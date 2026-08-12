@@ -1,9 +1,51 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using PrivateExpenses.Infrastructure.Parsing;
 
 namespace PrivateExpenses.UnitTests.Parsing;
 
 public class AnthropicVisionReceiptParserTests
 {
+    private static readonly AnthropicVisionReceiptParser Parser =
+        new(client: null!, modelId: "test-model", NullLogger<AnthropicVisionReceiptParser>.Instance);
+
+    [Fact]
+    public void MapToResult_ItemWithPromotionLabel_PreservesTheLabel()
+    {
+        const string json = """
+            {
+              "merchantName": "Lidl",
+              "items": [
+                { "description": "Kiwi gold los", "totalPriceAmount": "-1.00", "isDiscount": true, "promotionLabel": "1+1 gratis" }
+              ]
+            }
+            """;
+
+        var result = Parser.MapToResult(json);
+
+        Assert.True(result.Success);
+        var item = Assert.Single(result.Items);
+        Assert.True(item.IsDiscount);
+        Assert.Equal("1+1 gratis", item.PromotionLabel);
+    }
+
+    [Fact]
+    public void MapToResult_ItemWithoutPromotionLabel_LeavesItNull()
+    {
+        const string json = """
+            {
+              "merchantName": "Lidl",
+              "items": [
+                { "description": "Melk", "totalPriceAmount": "1.29" }
+              ]
+            }
+            """;
+
+        var result = Parser.MapToResult(json);
+
+        var item = Assert.Single(result.Items);
+        Assert.Null(item.PromotionLabel);
+    }
+
     [Theory]
     [InlineData("12.34", 1234)]
     [InlineData("0.01", 1)]

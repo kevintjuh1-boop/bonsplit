@@ -15,6 +15,11 @@ public class ExpenseItem
     public bool IsDiscount { get; set; }
     public bool IsDeposit { get; set; }
 
+    /// <summary>Human-readable promotion type when known (e.g. "1+1 gratis", "20% korting"),
+    /// distinct from the generic <see cref="IsDiscount"/> flag. Null when not a discount or when
+    /// the specific promotion type wasn't identifiable.</summary>
+    public string? PromotionLabel { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public ICollection<ExpenseItemShare> Shares { get; set; } = new List<ExpenseItemShare>();

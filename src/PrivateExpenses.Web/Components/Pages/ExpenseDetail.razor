@@ -117,7 +117,7 @@ else
                             @item.Description
                             @if (item.IsDiscount)
                             {
-                                <span class="badge badge-warning" style="margin-left:6px;">Korting</span>
+                                <span class="badge badge-warning" style="margin-left:6px;">@(string.IsNullOrWhiteSpace(item.PromotionLabel) ? "Korting" : item.PromotionLabel)</span>
                             }
                             @if (item.IsDeposit)
                             {
