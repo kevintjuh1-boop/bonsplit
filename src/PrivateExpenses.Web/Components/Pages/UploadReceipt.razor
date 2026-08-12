@@ -100,8 +100,22 @@ else if (_stage != Stage.Error)
                     </span>
                     <span class="text-sm" style="font-weight:@(current || done ? "700" : "500");color:@(current || done ? "var(--color-text)" : "var(--color-text-subtle))");">
                         @step.Value
+                        @if (current && step.Key == Stage.Analyzing)
+                        {
+                            <span class="text-muted"> — @_analyzingSeconds sec</span>
+                        }
                     </span>
                 </div>
+            }
+            @if (_stage == Stage.Analyzing)
+            {
+                <p class="text-muted text-sm" style="margin:0;">
+                    Dit duurt meestal een paar seconden.
+                    @if (_analyzingSeconds >= 15)
+                    {
+                        <text> Bij een lastig leesbare bon kan het iets langer duren.</text>
+                    }
+                </p>
             }
         </div>
     </div>
@@ -161,6 +175,7 @@ else if (_stage != Stage.Error)
     private List<DuplicateMatchDto> _duplicateMatches = [];
     private bool _duplicateAcknowledged;
     private Guid _documentId;
+    private int _analyzingSeconds;
 
     // Bumped every time we return to the picker so the <InputFile> elements are torn down and
     // recreated (via @key) rather than reused. A reused element keeps the browser's previous
@@ -253,9 +268,20 @@ else if (_stage != Stage.Error)
             await Task.Delay(150);
 
             _stage = Stage.Analyzing;
+            _analyzingSeconds = 0;
             StateHasChanged();
 
-            await ReceiptImportService.ParseAsync(_documentId);
+            using var tickerCts = new CancellationTokenSource();
+            var tickerTask = TickAnalyzingSecondsAsync(tickerCts.Token);
+            try
+            {
+                await ReceiptImportService.ParseAsync(_documentId);
+            }
+            finally
+            {
+                tickerCts.Cancel();
+                await tickerTask;
+            }
 
             _stage = Stage.RecognizingItems;
             StateHasChanged();
@@ -287,5 +313,22 @@ else if (_stage != Stage.Error)
         _duplicateMatches = [];
         _duplicateAcknowledged = false;
         _inputKey++;
+    }
+
+    private async Task TickAnalyzingSecondsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(1000, cancellationToken);
+                _analyzingSeconds++;
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected once ParseAsync completes and the caller cancels the ticker.
+        }
     }
 }

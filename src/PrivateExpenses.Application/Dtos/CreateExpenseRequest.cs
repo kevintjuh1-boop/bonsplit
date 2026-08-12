@@ -34,6 +34,10 @@ public sealed class CreateExpenseRequest
     public required IReadOnlyList<ExpenseItemInput> Items { get; init; }
     public required IReadOnlyList<ExpensePaymentInput> Payments { get; init; }
     public Guid? ReceiptDocumentId { get; init; }
+
+    /// <summary>Who saved this expense, if known — used to attribute and address the "nieuwe bon"
+    /// notification sent to the other people when a receipt-linked expense is created.</summary>
+    public Guid? CreatedByPersonId { get; init; }
 }
 
 /// <summary>A manual expense (section 42) has no line items — it's a single amount split between

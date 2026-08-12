@@ -1,0 +1,99 @@
+@using PrivateExpenses.Application.Abstractions.Services
+@using PrivateExpenses.Web.Services
+@using PrivateExpenses.Web.Support
+@inject IPersonService PersonService
+@inject CurrentPersonState CurrentPerson
+@inject IJSRuntime JS
+
+@if (_showPicker)
+{
+    <div class="person-picker-overlay">
+        <div class="card card-padded" style="max-width:360px;width:100%;">
+            <div class="stack" style="gap:14px;text-align:center;">
+                <div>
+                    <h2 class="page-title" style="font-size:18px;">Wie ben jij?</h2>
+                    <p class="text-muted text-sm" style="margin-top:4px;">
+                        Zodat uitgaven en meldingen aan de juiste persoon gekoppeld worden.
+                    </p>
+                </div>
+                <div class="stack" style="gap:8px;">
+                    @foreach (var person in _people)
+                    {
+                        <button type="button" class="btn btn-secondary btn-block" style="justify-content:flex-start;gap:10px;" @onclick="() => SelectAsync(person.Id)">
+                            <span class="avatar avatar-sm" style="@PersonColorPalette.AvatarStyle(person.ColorKey)">@person.Initial</span>
+                            @person.Name
+                        </button>
+                    }
+                </div>
+                @if (CurrentPerson.CurrentPersonId is not null)
+                {
+                    <button type="button" class="btn btn-ghost btn-sm" @onclick="() => _showPicker = false">Annuleren</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .person-picker-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(15, 18, 25, .55);
+        padding: 20px;
+    }
+</style>
+
+@implements IDisposable
+@code {
+    private const string StorageKey = "bonsplit_person_id";
+
+    private List<PrivateExpenses.Domain.Entities.Person> _people = [];
+    private bool _showPicker;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _people = await PersonService.GetAllAsync();
+        CurrentPerson.ChangeRequested += OnChangeRequested;
+    }
+
+    private void OnChangeRequested()
+    {
+        _showPicker = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        CurrentPerson.ChangeRequested -= OnChangeRequested;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var stored = await JS.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+        if (Guid.TryParse(stored, out var personId) && _people.Any(p => p.Id == personId))
+        {
+            CurrentPerson.SetLoaded(personId);
+            return;
+        }
+
+        CurrentPerson.SetLoaded(null);
+        _showPicker = true;
+        StateHasChanged();
+    }
+
+    private async Task SelectAsync(Guid personId)
+    {
+        await JS.InvokeVoidAsync("localStorage.setItem", StorageKey, personId.ToString());
+        CurrentPerson.SetCurrentPerson(personId);
+        _showPicker = false;
+    }
+}

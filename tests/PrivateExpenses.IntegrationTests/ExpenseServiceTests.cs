@@ -144,4 +144,72 @@ public class ExpenseServiceTests : IAsyncLifetime
         Assert.NotNull(detail);
         Assert.True(detail.IsDeleted);
     }
+
+    [Fact]
+    public async Task CreateAsync_WithReceiptDocument_NotifiesEveryoneExceptTheUploader()
+    {
+        Guid documentId;
+        await using (var uow = await _db.UnitOfWorkFactory.CreateAsync())
+        {
+            documentId = Guid.NewGuid();
+            await uow.ReceiptDocuments.AddAsync(new ReceiptDocument
+            {
+                Id = documentId,
+                OriginalFileName = "bon.jpg",
+                StoredFileName = "bon-stored.jpg",
+                MimeType = "image/jpeg",
+                FileHash = "hash",
+                UploadedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+            });
+            await uow.SaveChangesAsync();
+        }
+
+        var expenseId = await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Lidl",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = 600,
+            ReceiptDocumentId = documentId,
+            CreatedByPersonId = _kevin.Id,
+            Items = [new ExpenseItemInput { Description = "Boodschappen", TotalCents = 600, ParticipantPersonIdsInOrder = [_kevin.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 600 }],
+        });
+
+        await using var verifyUow = await _db.UnitOfWorkFactory.CreateAsync();
+        var kevinNotifications = await verifyUow.Notifications.GetForPersonAsync(_kevin.Id, 10);
+        var wesleyNotifications = await verifyUow.Notifications.GetForPersonAsync(_wesley.Id, 10);
+        var josNotifications = await verifyUow.Notifications.GetForPersonAsync(_jos.Id, 10);
+
+        Assert.Empty(kevinNotifications);
+
+        var wesleyNotification = Assert.Single(wesleyNotifications);
+        Assert.Equal(expenseId, wesleyNotification.ExpenseId);
+        Assert.Contains("Kevin", wesleyNotification.Message);
+        Assert.Contains("Lidl", wesleyNotification.Message);
+        Assert.False(wesleyNotification.IsRead);
+
+        Assert.Single(josNotifications);
+        Assert.Equal(1, await verifyUow.Notifications.GetUnreadCountAsync(_wesley.Id));
+
+        await verifyUow.Notifications.MarkAllReadAsync(_wesley.Id);
+        Assert.Equal(0, await verifyUow.Notifications.GetUnreadCountAsync(_wesley.Id));
+    }
+
+    [Fact]
+    public async Task CreateManualExpenseAsync_DoesNotNotifyAnyone()
+    {
+        await _service.CreateManualExpenseAsync(new ManualExpenseRequest
+        {
+            Description = "Handmatig",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            AmountCents = 400,
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 400 }],
+            ParticipantPersonIdsInOrder = [_kevin.Id, _wesley.Id],
+        });
+
+        await using var uow = await _db.UnitOfWorkFactory.CreateAsync();
+        Assert.Empty(await uow.Notifications.GetForPersonAsync(_wesley.Id, 10));
+        Assert.Empty(await uow.Notifications.GetForPersonAsync(_jos.Id, 10));
+    }
 }

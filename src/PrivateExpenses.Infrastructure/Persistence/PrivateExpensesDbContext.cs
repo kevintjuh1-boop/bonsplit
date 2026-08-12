@@ -13,6 +13,7 @@ public class PrivateExpensesDbContext(DbContextOptions<PrivateExpensesDbContext>
     public DbSet<ExpensePayment> ExpensePayments => Set<ExpensePayment>();
     public DbSet<ReceiptDocument> ReceiptDocuments => Set<ReceiptDocument>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

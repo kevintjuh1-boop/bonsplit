@@ -55,6 +55,7 @@ builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(a
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 builder.Services.AddScoped<ViewAsState>();
+builder.Services.AddScoped<CurrentPersonState>();
 
 var app = builder.Build();
 

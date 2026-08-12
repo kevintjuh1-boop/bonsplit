@@ -16,6 +16,7 @@ public class EfUnitOfWork : IUnitOfWork
         Expenses = new ExpenseRepository(context);
         Settlements = new SettlementRepository(context);
         ReceiptDocuments = new ReceiptDocumentRepository(context);
+        Notifications = new NotificationRepository(context);
     }
 
     public IPersonRepository Persons { get; }
@@ -23,6 +24,7 @@ public class EfUnitOfWork : IUnitOfWork
     public IExpenseRepository Expenses { get; }
     public ISettlementRepository Settlements { get; }
     public IReceiptDocumentRepository ReceiptDocuments { get; }
+    public INotificationRepository Notifications { get; }
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
         _context.SaveChangesAsync(cancellationToken);

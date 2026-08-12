@@ -14,6 +14,7 @@ public interface IUnitOfWork : IAsyncDisposable
     IExpenseRepository Expenses { get; }
     ISettlementRepository Settlements { get; }
     IReceiptDocumentRepository ReceiptDocuments { get; }
+    INotificationRepository Notifications { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

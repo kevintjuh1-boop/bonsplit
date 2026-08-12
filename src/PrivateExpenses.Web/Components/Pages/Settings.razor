@@ -1,4 +1,8 @@
 @page "/instellingen"
+@using PrivateExpenses.Application.Abstractions.Services
+@using PrivateExpenses.Web.Services
+@inject IPersonService PersonService
+@inject CurrentPersonState CurrentPerson
 
 <PageTitle>Instellingen</PageTitle>
 
@@ -23,5 +27,27 @@
             <span class="text-muted text-sm">Personen beheren</span>
             <a href="/personen" class="text-sm" style="font-weight:600;color:var(--color-primary);">Naar Personen →</a>
         </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="text-muted text-sm">Jij bent</span>
+            @if (_currentPersonName is not null)
+            {
+                <button type="button" class="text-sm" style="font-weight:600;color:var(--color-primary);background:none;border:none;cursor:pointer;padding:0;" @onclick="() => CurrentPerson.RequestChange()">
+                    @_currentPersonName (wijzigen)
+                </button>
+            }
+        </div>
     </div>
 </div>
+
+@code {
+    private string? _currentPersonName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CurrentPerson.CurrentPersonId is { } id)
+        {
+            var person = await PersonService.GetByIdAsync(id);
+            _currentPersonName = person?.Name;
+        }
+    }
+}

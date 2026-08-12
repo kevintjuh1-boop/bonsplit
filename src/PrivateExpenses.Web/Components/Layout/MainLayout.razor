@@ -1,5 +1,7 @@
 @inherits LayoutComponentBase
 
+<PersonPicker />
+
 <div class="app-shell">
     <aside class="app-sidebar">
         <NavMenu />
@@ -8,7 +10,12 @@
     <div class="app-main">
         <header class="app-topbar-mobile">
             <BonSplitLogo Size="26" WordmarkSize="16" />
+            <NotificationBell />
         </header>
+
+        <div class="app-topbar-desktop">
+            <NotificationBell />
+        </div>
 
         <main class="app-content">
             @Body

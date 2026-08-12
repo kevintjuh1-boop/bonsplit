@@ -15,6 +15,7 @@ public static class DependencyInjection
         services.AddScoped<ISettlementService, SettlementService>();
         services.AddScoped<IReceiptImportService, ReceiptImportService>();
         services.AddScoped<IExportService, ExportService>();
+        services.AddScoped<INotificationService, NotificationService>();
 
         return services;
     }

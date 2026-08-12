@@ -7,6 +7,7 @@
 @inject IPersonService PersonService
 @inject NavigationManager Navigation
 @inject ILogger<ReviewReceipt> Logger
+@inject PrivateExpenses.Web.Services.CurrentPersonState CurrentPerson
 
 <PageTitle>Bon controleren</PageTitle>
 
@@ -400,6 +401,12 @@ else
 
         _categories = await CategoryService.GetAllAsync();
         _people = await PersonService.GetAllAsync();
+
+        if (_payerId is null && CurrentPerson.CurrentPersonId is { } currentPersonId && _people.Any(p => p.Id == currentPersonId))
+        {
+            _payerId = currentPersonId;
+        }
+
         _document = await ReceiptImportService.GetDocumentAsync(DocumentId);
         _parseResult = await ReceiptImportService.GetLastParseResultAsync(DocumentId);
 
@@ -565,6 +572,7 @@ else
                 TotalCents = TotalCentsValue,
                 CategoryId = _categoryId,
                 ReceiptDocumentId = DocumentId,
+                CreatedByPersonId = CurrentPerson.CurrentPersonId,
                 Items = _items.Select(i => new ExpenseItemInput
                 {
                     Description = i.Description.Trim(),

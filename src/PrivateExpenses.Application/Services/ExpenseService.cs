@@ -64,9 +64,8 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
         ValidateRequest(request);
 
         await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
-        var knownPersonIds = (await uow.Persons.GetAllAsync(includeInactive: true, cancellationToken))
-            .Select(p => p.Id)
-            .ToHashSet();
+        var persons = await uow.Persons.GetAllAsync(includeInactive: true, cancellationToken);
+        var knownPersonIds = persons.Select(p => p.Id).ToHashSet();
 
         var now = DateTime.UtcNow;
         var expense = new Expense
@@ -102,6 +101,21 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
                 document.ExpenseId = expense.Id;
                 document.ParsingStatus = Domain.Enums.ParsingStatus.Confirmed;
                 uow.ReceiptDocuments.Update(document);
+
+                var actorName = persons.FirstOrDefault(p => p.Id == request.CreatedByPersonId)?.Name ?? "Iemand";
+                var recipientIds = persons.Select(p => p.Id).Where(id => id != request.CreatedByPersonId);
+                foreach (var recipientId in recipientIds)
+                {
+                    await uow.Notifications.AddAsync(new Notification
+                    {
+                        Id = Guid.NewGuid(),
+                        Message = $"{actorName} heeft een bon toegevoegd: {expense.MerchantName}",
+                        ExpenseId = expense.Id,
+                        RecipientPersonId = recipientId,
+                        ActorPersonId = request.CreatedByPersonId,
+                        CreatedAt = now,
+                    }, cancellationToken);
+                }
             }
         }, cancellationToken);
 
