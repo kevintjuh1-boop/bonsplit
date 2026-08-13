@@ -35,14 +35,8 @@ else
                     <button type="button" class="person-chip @(selected ? "selected" : "")"
                             style="@(selected ? PersonColorPalette.SolidStyle(person.ColorKey) : "")"
                             @onclick="() => SelectViewAs(person.Id)">
-                        @if (PersonAvatarUrl.For(person) is { } avatarUrl)
-                        {
-                            <img class="avatar avatar-xs" src="@avatarUrl" alt="@person.Name" style="object-fit:cover;" />
-                        }
-                        else
-                        {
-                            <span class="avatar avatar-xs" style="@(selected ? "background:rgba(255,255,255,.28);color:white;" : PersonColorPalette.AvatarStyle(person.ColorKey))">@person.Initial</span>
-                        }
+                        @* A photo just reads as a muddy blob at 22px — the bold letter is more legible here. *@
+                        <span class="avatar avatar-xs" style="@(selected ? "background:rgba(255,255,255,.28);color:white;" : PersonColorPalette.AvatarStyle(person.ColorKey))">@person.Initial</span>
                         @person.Name
                     </button>
                 }
