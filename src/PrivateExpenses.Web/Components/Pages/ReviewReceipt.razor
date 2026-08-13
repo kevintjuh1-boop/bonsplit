@@ -238,7 +238,7 @@ else
                                         @foreach (var person in _people)
                                         {
                                             <div style="display:flex;align-items:center;gap:8px;">
-                                                <PersonAvatar Initial="@person.Initial" ColorKey="@person.ColorKey" Name="@person.Name" Size="xs" />
+                                                <PersonAvatar Initial="@person.Initial" ColorKey="@person.ColorKey" Name="@person.Name" Size="xs" AvatarUrl="@PersonAvatarUrl.For(person)" />
                                                 <span class="text-sm" style="width:70px;">@person.Name</span>
                                                 <div class="input-money" style="width:110px;">
                                                     <span class="input-money-prefix">€</span>

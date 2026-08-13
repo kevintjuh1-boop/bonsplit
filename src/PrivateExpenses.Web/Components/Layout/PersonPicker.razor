@@ -22,7 +22,14 @@ else if (_showPicker)
                 @foreach (var person in _people)
                 {
                     <button type="button" class="person-gate-option" @onclick="() => SelectAsync(person.Id)">
-                        <span class="avatar" style="width:64px;height:64px;font-size:22px;flex-shrink:0;@PersonColorPalette.SolidStyle(person.ColorKey)">@person.Initial</span>
+                        @if (PersonAvatarUrl.For(person) is { } avatarUrl)
+                        {
+                            <img src="@avatarUrl" alt="@person.Name" style="width:64px;height:64px;border-radius:var(--radius-full);object-fit:cover;flex-shrink:0;" />
+                        }
+                        else
+                        {
+                            <span class="avatar" style="width:64px;height:64px;font-size:22px;flex-shrink:0;@PersonColorPalette.SolidStyle(person.ColorKey)">@person.Initial</span>
+                        }
                         <span class="person-gate-name">
                             @person.Name
                             <span class="person-gate-cta">Doorgaan als @person.Name</span>

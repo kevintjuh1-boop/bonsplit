@@ -23,6 +23,8 @@ services:
         value: "Data Source=/data/privateexpenses.db"
       - key: ReceiptStorage__RootPath
         value: /data/uploads
+      - key: PersonAvatarStorage__RootPath
+        value: /data/avatars
       - key: DataProtection__KeyRingPath
         value: /data/keys
       - key: ReceiptParsing__Provider

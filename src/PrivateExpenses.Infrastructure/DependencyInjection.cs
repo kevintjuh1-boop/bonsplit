@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWorkFactory, EfUnitOfWorkFactory>();
 
         services.AddScoped<IReceiptStorage, LocalReceiptStorage>();
+        services.AddScoped<IPersonAvatarStorage, LocalPersonAvatarStorage>();
         AddReceiptParser(services, configuration);
 
         return services;

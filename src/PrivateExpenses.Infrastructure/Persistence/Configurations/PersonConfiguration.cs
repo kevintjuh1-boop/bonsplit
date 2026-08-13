@@ -21,6 +21,8 @@ public class PersonConfiguration : IEntityTypeConfiguration<Person>
         builder.Property(p => p.Initial).IsRequired().HasMaxLength(2);
         builder.Property(p => p.ColorKey).IsRequired().HasMaxLength(30);
         builder.Property(p => p.CreatedAt).IsRequired();
+        builder.Property(p => p.AvatarStoredFileName).HasMaxLength(260);
+        builder.Property(p => p.AvatarMimeType).HasMaxLength(100);
 
         builder.HasIndex(p => p.Name).IsUnique();
     }

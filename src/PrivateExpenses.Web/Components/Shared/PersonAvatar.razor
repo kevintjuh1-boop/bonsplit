@@ -1,12 +1,23 @@
 @using PrivateExpenses.Web.Support
 
-<span class="avatar avatar-@Size" style="@PersonColorPalette.AvatarStyle(ColorKey)" title="@Name">
-    @Initial
-</span>
+@if (AvatarUrl is not null)
+{
+    <img class="avatar avatar-@Size" style="object-fit:cover;" src="@AvatarUrl" alt="@Name" title="@Name" />
+}
+else
+{
+    <span class="avatar avatar-@Size" style="@PersonColorPalette.AvatarStyle(ColorKey)" title="@Name">
+        @Initial
+    </span>
+}
 
 @code {
     [Parameter, EditorRequired] public string Initial { get; set; } = "";
     [Parameter, EditorRequired] public string ColorKey { get; set; } = "";
     [Parameter] public string Name { get; set; } = "";
     [Parameter] public string Size { get; set; } = "md";
+
+    /// <summary>URL of the person's uploaded profile photo, or null to fall back to the colored
+    /// initial-letter avatar. Pass <c>PersonAvatarUrl.For(person)</c> for a full Person entity.</summary>
+    [Parameter] public string? AvatarUrl { get; set; }
 }

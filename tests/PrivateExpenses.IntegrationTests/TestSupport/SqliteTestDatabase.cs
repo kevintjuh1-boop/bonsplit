@@ -18,12 +18,15 @@ public sealed class SqliteTestDatabase : IAsyncDisposable
 
     public IUnitOfWorkFactory UnitOfWorkFactory { get; }
     public IReceiptStorage ReceiptStorage { get; }
+    public IPersonAvatarStorage PersonAvatarStorage { get; }
 
     public SqliteTestDatabase()
     {
         _tempDir = Path.Combine(Path.GetTempPath(), "PrivateExpensesTests", Guid.NewGuid().ToString("N"));
         var uploadsPath = Path.Combine(_tempDir, "uploads");
         Directory.CreateDirectory(uploadsPath);
+        var avatarsPath = Path.Combine(_tempDir, "avatars");
+        Directory.CreateDirectory(avatarsPath);
 
         var dbPath = Path.Combine(_tempDir, "test.db");
         var options = new DbContextOptionsBuilder<PrivateExpensesDbContext>()
@@ -40,9 +43,14 @@ public sealed class SqliteTestDatabase : IAsyncDisposable
         }
 
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["ReceiptStorage:RootPath"] = uploadsPath })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ReceiptStorage:RootPath"] = uploadsPath,
+                ["PersonAvatarStorage:RootPath"] = avatarsPath,
+            })
             .Build();
         ReceiptStorage = new LocalReceiptStorage(configuration);
+        PersonAvatarStorage = new LocalPersonAvatarStorage(configuration);
     }
 
     public async Task<List<Domain.Entities.Person>> GetPeopleAsync()

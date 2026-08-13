@@ -60,7 +60,7 @@
         @foreach (var person in _people)
         {
             <a href="@($"/personen/{person.Id}")" class="list-row">
-                <PersonAvatar Initial="@person.Initial" ColorKey="@person.ColorKey" Name="@person.Name" Size="md" />
+                <PersonAvatar Initial="@person.Initial" ColorKey="@person.ColorKey" Name="@person.Name" Size="md" AvatarUrl="@PersonAvatarUrl.For(person)" />
                 <span class="list-row-main">
                     <span class="list-row-title">@person.Name</span>
                     <span class="list-row-subtitle">@(person.IsActive ? "Actief" : "Gedeactiveerd")</span>

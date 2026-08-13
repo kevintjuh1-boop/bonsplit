@@ -1,8 +1,11 @@
 @page "/personen/{Id:guid}"
+@using PrivateExpenses.Application.Exceptions
+@using PrivateExpenses.Application.Validation
 @inject IPersonService PersonService
 @inject IBalanceService BalanceService
 @inject IExpenseService ExpenseService
 @inject ISettlementService SettlementService
+@inject ILogger<PersonDetail> Logger
 
 <PageTitle>Persoon</PageTitle>
 
@@ -24,9 +27,34 @@ else
                 <Icon Name="chevron-left" Size="14" /> Terug naar personen
             </a>
             <div style="display:flex;align-items:center;gap:12px;">
-                <PersonAvatar Initial="@_person.Initial" ColorKey="@_person.ColorKey" Name="@_person.Name" Size="lg" />
-                <h1 class="page-title">@_person.Name</h1>
+                <div style="position:relative;flex-shrink:0;">
+                    <PersonAvatar Initial="@_person.Initial" ColorKey="@_person.ColorKey" Name="@_person.Name" Size="lg" AvatarUrl="@PersonAvatarUrl.For(_person)" />
+                    <label for="avatar-file" class="avatar-edit-button" title="Foto wijzigen" aria-label="Foto wijzigen">
+                        @if (_avatarUploading)
+                        {
+                            <LoadingSpinner Size="12" Centered="false" />
+                        }
+                        else
+                        {
+                            <Icon Name="camera" Size="12" />
+                        }
+                    </label>
+                    <InputFile @key="_avatarInputKey" id="avatar-file" OnChange="OnAvatarFileSelected" accept="image/*" class="visually-hidden" disabled="@_avatarUploading" />
+                </div>
+                <div>
+                    <h1 class="page-title">@_person.Name</h1>
+                    @if (_person.AvatarStoredFileName is not null)
+                    {
+                        <button type="button" class="text-sm" style="font-weight:600;color:var(--color-primary);background:none;border:none;cursor:pointer;padding:0;" @onclick="RemoveAvatarAsync" disabled="@_avatarUploading">
+                            Foto verwijderen
+                        </button>
+                    }
+                </div>
             </div>
+            @if (_avatarError is not null)
+            {
+                <p class="text-sm" style="color:var(--color-danger-text);margin-top:6px;">@_avatarError</p>
+            }
         </div>
     </div>
 
@@ -77,6 +105,24 @@ else
     </div>
 }
 
+<style>
+    .avatar-edit-button {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        width: 22px;
+        height: 22px;
+        border-radius: var(--radius-full);
+        background: var(--color-navy);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        border: 2px solid var(--color-surface);
+    }
+</style>
+
 @code {
     [Parameter] public Guid Id { get; set; }
 
@@ -84,6 +130,9 @@ else
     private Person? _person;
     private PersonBalanceDto? _balance;
     private List<ActivityRow> _recentActivity = [];
+    private bool _avatarUploading;
+    private string? _avatarError;
+    private int _avatarInputKey;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -115,6 +164,61 @@ else
         }
 
         _loading = false;
+    }
+
+    private async Task OnAvatarFileSelected(InputFileChangeEventArgs e)
+    {
+        _avatarError = null;
+        var file = e.File;
+
+        // Same reasoning as UploadReceipt.razor's OnFileSelected: the browser->server transfer runs
+        // over the SignalR circuit and can hang indefinitely on a hiccup with nothing to time it out
+        // by default, so bound it explicitly.
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+
+        try
+        {
+            _avatarUploading = true;
+            StateHasChanged();
+
+            await using var stream = file.OpenReadStream(PersonAvatarFileValidator.MaxFileSizeBytes, timeoutCts.Token);
+            await PersonService.UpdateAvatarAsync(Id, stream, file.Name, file.ContentType, file.Size, timeoutCts.Token);
+
+            _person = await PersonService.GetByIdAsync(Id);
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _avatarError = ex.Message;
+        }
+        catch (IOException)
+        {
+            _avatarError = $"Deze foto is te groot. Maximaal {PersonAvatarFileValidator.MaxFileSizeBytes / 1024 / 1024} MB.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Uploading a profile photo failed unexpectedly for person {PersonId}", Id);
+            _avatarError = "De foto kon niet worden opgeslagen. Probeer het opnieuw.";
+        }
+        finally
+        {
+            _avatarUploading = false;
+            _avatarInputKey++;
+        }
+    }
+
+    private async Task RemoveAvatarAsync()
+    {
+        _avatarError = null;
+        try
+        {
+            await PersonService.RemoveAvatarAsync(Id);
+            _person = await PersonService.GetByIdAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Removing a profile photo failed unexpectedly for person {PersonId}", Id);
+            _avatarError = "De foto kon niet worden verwijderd. Probeer het opnieuw.";
+        }
     }
 
     private sealed record ActivityRow(string Icon, string Title, DateOnly Date, long AmountCents);

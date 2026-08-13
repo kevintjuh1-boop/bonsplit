@@ -147,6 +147,14 @@ app.MapGet("/api/receipts/{id:guid}/file", async (Guid id, IReceiptImportService
     return file is null ? Results.NotFound() : Results.File(file.Content, file.MimeType, enableRangeProcessing: true);
 });
 
+// Profile photos, same reasoning as receipt files above — served only through this controlled
+// endpoint, 404s when a person has no avatar set.
+app.MapGet("/api/personen/{id:guid}/avatar", async (Guid id, IPersonService personService, CancellationToken cancellationToken) =>
+{
+    var file = await personService.OpenAvatarAsync(id, cancellationToken);
+    return file is null ? Results.NotFound() : Results.File(file.Content, file.MimeType);
+});
+
 // CSV export (section 67) — reuses the exact same ExpenseFilter the "Uitgaven" list page applies, so
 // "export what I'm currently looking at" always matches what's on screen.
 app.MapGet("/api/export/expenses", async (
@@ -225,5 +233,13 @@ static void ResolveAndEnsureDataDirectories(ConfigurationManager configuration, 
         var absoluteUploadsPath = Path.IsPathRooted(uploadsPath) ? uploadsPath : Path.Combine(contentRootPath, uploadsPath);
         Directory.CreateDirectory(absoluteUploadsPath);
         configuration["ReceiptStorage:RootPath"] = absoluteUploadsPath;
+    }
+
+    var avatarsPath = configuration["PersonAvatarStorage:RootPath"];
+    if (!string.IsNullOrWhiteSpace(avatarsPath))
+    {
+        var absoluteAvatarsPath = Path.IsPathRooted(avatarsPath) ? avatarsPath : Path.Combine(contentRootPath, avatarsPath);
+        Directory.CreateDirectory(absoluteAvatarsPath);
+        configuration["PersonAvatarStorage:RootPath"] = absoluteAvatarsPath;
     }
 }
