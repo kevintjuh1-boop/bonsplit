@@ -195,8 +195,10 @@ else if (_stage != Stage.Error)
         // several interop round-trips reading chunks. If the circuit hiccups mid-transfer (backgrounded
         // mobile tab, brief network blip) those calls can hang indefinitely with no exception at all —
         // there is nothing on the .NET side to time them out by default. A hard deadline here turns that
-        // silent, permanent hang into a visible, recoverable error instead.
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        // silent, permanent hang into a visible, recoverable error instead. 180s (not 60s) because a
+        // self-hosted deployment reached directly over a mobile connection (no CDN/edge network smoothing
+        // things out, unlike the earlier Render deployment) can genuinely need longer for a few MB.
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(180));
 
         try
         {
