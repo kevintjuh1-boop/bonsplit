@@ -118,7 +118,13 @@ else
                 </div>
 
                 <div class="field" style="margin-top:12px;">
-                    <span class="field-label">Betaald door *</span>
+                    <span class="field-label">@(IsDepositOnlyRefund ? "Ontvangen door *" : "Betaald door *")</span>
+                    @if (IsDepositOnlyRefund)
+                    {
+                        <p class="text-muted text-sm" style="margin:2px 0 8px;">
+                            Dit is alleen retour-statiegeld. Kies wie het geld heeft gekregen — de anderen krijgen hun deel als tegoed als je de regels hieronder verdeelt.
+                        </p>
+                    }
                     <div class="person-row" style="flex-wrap:wrap;">
                         @foreach (var person in _people)
                         {
@@ -372,6 +378,11 @@ else
     private long TotalCentsValue => MoneyParsing.ParseToCents(_totalText) ?? 0;
     private long ItemsTotalCents => _items.Sum(i => i.TotalCents);
     private long DifferenceCents => TotalCentsValue - ItemsTotalCents;
+
+    /// <summary>True for a receipt that's purely statiegeld/emballage being ingeleverd (not a normal
+    /// purchase) — money comes back instead of going out, so the payer picker below becomes a
+    /// "who received this" picker instead, and the total is allowed to be negative.</summary>
+    private bool IsDepositOnlyRefund => _items.Count > 0 && _items.All(i => i.IsDeposit) && TotalCentsValue < 0;
     private int AssignedCount => _items.Count(i => i.IsAssigned);
     private int SelectedCount => _items.Count(i => i.Selected);
     private int ProgressPercent => _items.Count == 0 ? 0 : (int)Math.Round(AssignedCount * 100m / _items.Count);
@@ -542,7 +553,7 @@ else
 
         if (_payerId is null)
         {
-            _saveError = "Kies wie deze bon heeft betaald.";
+            _saveError = IsDepositOnlyRefund ? "Kies wie het statiegeld heeft ontvangen." : "Kies wie deze bon heeft betaald.";
             return;
         }
 

@@ -1,4 +1,5 @@
 using PrivateExpenses.Application.Dtos;
+using PrivateExpenses.Application.Exceptions;
 using PrivateExpenses.Application.Services;
 using PrivateExpenses.Domain.Entities;
 using PrivateExpenses.IntegrationTests.TestSupport;
@@ -90,5 +91,89 @@ public class BalanceAndSettlementTests : IAsyncLifetime
         Assert.Contains("17,38", wesleyNotification.Message);
 
         Assert.Empty(await uow.Notifications.GetForPersonAsync(_jos.Id, 10));
+    }
+
+    [Fact]
+    public async Task CreateAsync_DepositOnlyRefundSharedAmongThree_TheReceiverOwesTheOthersTheirShare()
+    {
+        // Kevin returns €4,50 of empties that belonged to all three of them equally (€1,50 each). He's
+        // holding money that isn't only his, so — the mirror image of a normal expense — he now owes
+        // Wesley and Jos €1,50 each instead of being owed anything.
+        await _expenseService.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Jumbo (statiegeld)",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = -450,
+            Items = [new ExpenseItemInput { Description = "Emballage", TotalCents = -450, IsDeposit = true, ParticipantPersonIdsInOrder = [_kevin.Id, _wesley.Id, _jos.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = -450 }],
+        });
+
+        var balances = await _balanceService.GetPersonBalancesAsync();
+        Assert.Equal(-300, balances.Single(b => b.PersonId == _kevin.Id).NetBalanceCents);
+        Assert.Equal(150, balances.Single(b => b.PersonId == _wesley.Id).NetBalanceCents);
+        Assert.Equal(150, balances.Single(b => b.PersonId == _jos.Id).NetBalanceCents);
+
+        var debts = await _balanceService.GetSuggestedDebtsAsync();
+        Assert.Equal(2, debts.Count);
+        Assert.All(debts, d => Assert.Equal(_kevin.Id, d.FromPersonId));
+        Assert.Equal(150, debts.Single(d => d.ToPersonId == _wesley.Id).AmountCents);
+        Assert.Equal(150, debts.Single(d => d.ToPersonId == _jos.Id).AmountCents);
+    }
+
+    [Fact]
+    public async Task CreateAsync_DepositOnlyRefundForOnePersonAlone_DoesNotAffectAnyonesBalance()
+    {
+        // Kevin returns only his own empties — the refund is entirely his, so nobody owes anybody
+        // anything once it's recorded (paid = owed = -450 for Kevin, nothing at all for the others).
+        await _expenseService.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Jumbo (statiegeld)",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = -450,
+            Items = [new ExpenseItemInput { Description = "Emballage", TotalCents = -450, IsDeposit = true, ParticipantPersonIdsInOrder = [_kevin.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = -450 }],
+        });
+
+        var balances = await _balanceService.GetPersonBalancesAsync();
+        Assert.Equal(0, balances.Single(b => b.PersonId == _kevin.Id).NetBalanceCents);
+        Assert.DoesNotContain(balances, b => b.PersonId == _wesley.Id && b.NetBalanceCents != 0);
+        Assert.DoesNotContain(balances, b => b.PersonId == _jos.Id && b.NetBalanceCents != 0);
+        Assert.Empty(await _balanceService.GetSuggestedDebtsAsync());
+    }
+
+    [Fact]
+    public async Task CreateAsync_NegativeTotalWithARegularPurchaseItem_IsStillRejected()
+    {
+        // The negative-total allowance is specifically for deposit-only receipts — a negative total
+        // alongside a normal (non-deposit) item is still almost certainly a data-entry mistake.
+        var ex = await Assert.ThrowsAsync<ExpenseValidationException>(() => _expenseService.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Rare bon",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = -450,
+            Items =
+            [
+                new ExpenseItemInput { Description = "Emballage", TotalCents = -600, IsDeposit = true, ParticipantPersonIdsInOrder = [_kevin.Id] },
+                new ExpenseItemInput { Description = "Kauwgom", TotalCents = 150, ParticipantPersonIdsInOrder = [_kevin.Id] },
+            ],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = -450 }],
+        }));
+
+        Assert.Contains("negatief", ex.Message);
+    }
+
+    [Fact]
+    public async Task CreateAsync_PlainNegativeTotalPurchase_IsStillRejected()
+    {
+        var ex = await Assert.ThrowsAsync<ExpenseValidationException>(() => _expenseService.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Typefout",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = -1000,
+            Items = [new ExpenseItemInput { Description = "Boodschappen", TotalCents = -1000, ParticipantPersonIdsInOrder = [_kevin.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = -1000 }],
+        }));
+
+        Assert.Contains("negatief", ex.Message);
     }
 }

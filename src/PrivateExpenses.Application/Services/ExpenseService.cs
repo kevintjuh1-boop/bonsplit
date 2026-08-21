@@ -189,19 +189,26 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
             throw new ExpenseValidationException("Vul een winkel/omschrijving in.");
         }
 
-        if (request.TotalCents < 0)
-        {
-            throw new ExpenseValidationException("Het totaalbedrag mag niet negatief zijn.");
-        }
-
         if (request.Items.Count == 0)
         {
             throw new ExpenseValidationException("Een uitgave moet minstens één regel bevatten.");
         }
 
+        // A receipt that's purely statiegeld/emballage being ingeleverd (not gekocht) prints a negative
+        // total — money comes back instead of going out. Everywhere else a negative total is a mistake,
+        // but here it's the whole point, so this specific shape is let through.
+        var isDepositRefund = request.TotalCents < 0 && request.Items.All(i => i.IsDeposit);
+
+        if (request.TotalCents < 0 && !isDepositRefund)
+        {
+            throw new ExpenseValidationException("Het totaalbedrag mag niet negatief zijn.");
+        }
+
         if (request.Payments.Count == 0)
         {
-            throw new ExpenseValidationException("Kies wie deze uitgave heeft betaald.");
+            throw new ExpenseValidationException(isDepositRefund
+                ? "Kies wie het statiegeld heeft ontvangen."
+                : "Kies wie deze uitgave heeft betaald.");
         }
 
         var paidTotal = request.Payments.Sum(p => p.AmountCents);
@@ -213,9 +220,12 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
 
         foreach (var payment in request.Payments)
         {
-            if (payment.AmountCents <= 0)
+            var invalid = isDepositRefund ? payment.AmountCents >= 0 : payment.AmountCents <= 0;
+            if (invalid)
             {
-                throw new ExpenseValidationException("Een betaling moet een positief bedrag zijn.");
+                throw new ExpenseValidationException(isDepositRefund
+                    ? "Een ontvangen statiegeldbedrag moet negatief zijn."
+                    : "Een betaling moet een positief bedrag zijn.");
             }
         }
     }
