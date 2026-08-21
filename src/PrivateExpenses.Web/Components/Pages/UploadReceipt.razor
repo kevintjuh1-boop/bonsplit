@@ -51,7 +51,24 @@
 }
 else if (_stage == Stage.PickFile)
 {
-    <div class="card" style="max-width:640px;">
+    <div class="card" style="max-width:640px;position:relative;">
+        @if (_uploadingFile)
+        {
+            <div class="upload-progress-overlay">
+                <LoadingSpinner Size="36" />
+                <p style="font-weight:700;margin:14px 0 2px;">Bon uploaden — @_uploadSeconds sec</p>
+                <p class="text-muted text-sm" style="margin:0;text-align:center;max-width:280px;">
+                    @if (_uploadSeconds < 10)
+                    {
+                        <text>Even geduld…</text>
+                    }
+                    else
+                    {
+                        <text>Dit kan op een mobiele verbinding een tijdje duren. Niet wegklikken.</text>
+                    }
+                </p>
+            </div>
+        }
         <div class="card-padded">
             <label class="dropzone" for="receipt-file-desktop">
                 <Icon Name="upload" Size="28" />
@@ -153,6 +170,19 @@ else if (_stage != Stage.Error)
         display: none;
     }
 
+    .upload-progress-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: var(--color-surface);
+        border-radius: var(--radius-lg);
+    }
+
     @@media (max-width: 700px) {
         .dropzone { display: none; }
         .mobile-capture-actions { display: flex; flex-direction: column; gap: 10px; }
@@ -177,6 +207,8 @@ else if (_stage != Stage.Error)
     private bool _duplicateAcknowledged;
     private Guid _documentId;
     private int _analyzingSeconds;
+    private bool _uploadingFile;
+    private int _uploadSeconds;
 
     // Bumped every time we return to the picker so the <InputFile> elements are torn down and
     // recreated (via @key) rather than reused. A reused element keeps the browser's previous
@@ -200,57 +232,76 @@ else if (_stage != Stage.Error)
         // things out, unlike the earlier Render deployment) can genuinely need longer for a few MB.
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(180));
 
+        // The file-select handler itself never remounts the InputFile (see the note below), so it's
+        // safe to show a loading overlay for the transfer — unlike the later stage transitions, this
+        // one doesn't risk killing the in-flight JS interop read.
+        _uploadingFile = true;
+        _uploadSeconds = 0;
+        StateHasChanged();
+
+        using var uploadTickerCts = new CancellationTokenSource();
+        var uploadTickerTask = TickUploadSecondsAsync(uploadTickerCts.Token);
+
         try
         {
-            Logger.LogInformation("Receipt upload starting: {FileName} ({FileSize} bytes)", file.Name, file.Size);
-
-            // Read and upload the file BEFORE switching away from the PickFile stage. Blazor's InputFile
-            // reads browser bytes via JS interop tied to the <InputFile> DOM element itself — if a
-            // StateHasChanged() here unmounts that element (by switching the UI to the progress view)
-            // while the transfer is still in flight, the interop call throws
-            // "Cannot read properties of null (reading '_blazorFilesById')" because the element it needs
-            // to read from is already gone. Only update _stage once the bytes are safely on the server.
-            await using var stream = file.OpenReadStream(ReceiptFileValidator.MaxFileSizeBytes, timeoutCts.Token);
-            var result = await ReceiptImportService.UploadAsync(stream, file.Name, file.ContentType, file.Size, timeoutCts.Token);
-            _documentId = result.DocumentId;
-
-            Logger.LogInformation("Receipt upload finished: {DocumentId}", _documentId);
-
-            _stage = Stage.Uploading;
-            StateHasChanged();
-
-            if (result.DuplicateMatches.Count > 0)
+            try
             {
-                _duplicateMatches = result.DuplicateMatches.ToList();
-                _stage = Stage.PickFile;
-                _inputKey++;
-                StateHasChanged();
-                return;
-            }
+                Logger.LogInformation("Receipt upload starting: {FileName} ({FileSize} bytes)", file.Name, file.Size);
 
+                // Read and upload the file BEFORE switching away from the PickFile stage. Blazor's InputFile
+                // reads browser bytes via JS interop tied to the <InputFile> DOM element itself — if a
+                // StateHasChanged() here unmounts that element (by switching the UI to the progress view)
+                // while the transfer is still in flight, the interop call throws
+                // "Cannot read properties of null (reading '_blazorFilesById')" because the element it needs
+                // to read from is already gone. Only update _stage once the bytes are safely on the server.
+                await using var stream = file.OpenReadStream(ReceiptFileValidator.MaxFileSizeBytes, timeoutCts.Token);
+                var result = await ReceiptImportService.UploadAsync(stream, file.Name, file.ContentType, file.Size, timeoutCts.Token);
+                _documentId = result.DocumentId;
+
+                Logger.LogInformation("Receipt upload finished: {DocumentId}", _documentId);
+
+                _stage = Stage.Uploading;
+
+                if (result.DuplicateMatches.Count > 0)
+                {
+                    _duplicateMatches = result.DuplicateMatches.ToList();
+                    _stage = Stage.PickFile;
+                    _inputKey++;
+                }
+            }
+            catch (ExpenseValidationException ex)
+            {
+                _errorMessage = ex.Message;
+                _stage = Stage.Error;
+            }
+            catch (IOException)
+            {
+                _errorMessage = $"Dit bestand is te groot. Maximaal {ReceiptFileValidator.MaxFileSizeBytes / 1024 / 1024} MB.";
+                _stage = Stage.Error;
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+            {
+                Logger.LogWarning("Receipt upload timed out for {FileName}", file.Name);
+                _errorMessage = "Uploaden duurde te lang. Controleer je verbinding en probeer het opnieuw.";
+                _stage = Stage.Error;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Receipt upload failed unexpectedly for {FileName}", file.Name);
+                _errorMessage = "Uploaden is onverwacht mislukt. Probeer het opnieuw.";
+                _stage = Stage.Error;
+            }
+        }
+        finally
+        {
+            _uploadingFile = false;
+            uploadTickerCts.Cancel();
+            await uploadTickerTask;
+        }
+
+        if (_stage == Stage.Uploading)
+        {
             await ContinueToAnalysisAsync();
-        }
-        catch (ExpenseValidationException ex)
-        {
-            _errorMessage = ex.Message;
-            _stage = Stage.Error;
-        }
-        catch (IOException)
-        {
-            _errorMessage = $"Dit bestand is te groot. Maximaal {ReceiptFileValidator.MaxFileSizeBytes / 1024 / 1024} MB.";
-            _stage = Stage.Error;
-        }
-        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-        {
-            Logger.LogWarning("Receipt upload timed out for {FileName}", file.Name);
-            _errorMessage = "Uploaden duurde te lang. Controleer je verbinding en probeer het opnieuw.";
-            _stage = Stage.Error;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Receipt upload failed unexpectedly for {FileName}", file.Name);
-            _errorMessage = "Uploaden is onverwacht mislukt. Probeer het opnieuw.";
-            _stage = Stage.Error;
         }
 
         StateHasChanged();
@@ -332,6 +383,23 @@ else if (_stage != Stage.Error)
         catch (OperationCanceledException)
         {
             // Expected once ParseAsync completes and the caller cancels the ticker.
+        }
+    }
+
+    private async Task TickUploadSecondsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(1000, cancellationToken);
+                _uploadSeconds++;
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected once the upload attempt finishes and the caller cancels the ticker.
         }
     }
 }
