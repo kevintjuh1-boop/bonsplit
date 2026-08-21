@@ -6,6 +6,8 @@ public interface ISettlementRepository
 {
     Task<List<Settlement>> GetAllAsync(CancellationToken cancellationToken = default);
     Task<List<Settlement>> GetRecentAsync(int count, CancellationToken cancellationToken = default);
+    Task<Settlement?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     Task AddAsync(Settlement settlement, CancellationToken cancellationToken = default);
+    Task DeleteAsync(Settlement settlement, CancellationToken cancellationToken = default);
 }

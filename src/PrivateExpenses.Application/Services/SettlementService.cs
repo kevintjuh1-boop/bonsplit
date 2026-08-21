@@ -77,4 +77,14 @@ public class SettlementService(IUnitOfWorkFactory unitOfWorkFactory) : ISettleme
 
         return settlement.Id;
     }
+
+    public async Task DeleteAsync(Guid settlementId, CancellationToken cancellationToken = default)
+    {
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        var settlement = await uow.Settlements.GetByIdAsync(settlementId, cancellationToken)
+            ?? throw new ExpenseValidationException("De betaling die je probeert te verwijderen bestaat niet (meer).");
+
+        await uow.Settlements.DeleteAsync(settlement, cancellationToken);
+        await uow.SaveChangesAsync(cancellationToken);
+    }
 }

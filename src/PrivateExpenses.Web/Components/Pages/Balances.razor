@@ -155,7 +155,7 @@ else
             <div class="stack" style="gap:0;">
                 @foreach (var settlement in _history)
                 {
-                    <div class="list-row">
+                    <div class="list-row" style="flex-wrap:wrap;">
                         <span class="list-row-icon"><Icon Name="arrow-swap" Size="16" /></span>
                         <span class="list-row-main">
                             <span class="list-row-title">@settlement.FromPerson!.Name → @settlement.ToPerson!.Name</span>
@@ -168,6 +168,19 @@ else
                             </span>
                         </span>
                         <span class="list-row-amount">@MoneyFormatter.Format(settlement.AmountCents)</span>
+                        @if (_confirmDeleteSettlementId == settlement.Id)
+                        {
+                            <div style="display:flex;gap:6px;justify-content:flex-end;flex-basis:100%;margin-top:8px;">
+                                <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _confirmDeleteSettlementId = null">Annuleren</button>
+                                <button type="button" class="btn btn-danger btn-sm" disabled="@_deletingSettlement" @onclick="() => DeleteSettlementAsync(settlement.Id)">Ja, ongedaan maken</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-secondary btn-icon" style="margin-left:8px;" title="Betaling ongedaan maken" @onclick="() => _confirmDeleteSettlementId = settlement.Id">
+                                <Icon Name="trash" Size="16" />
+                            </button>
+                        }
                     </div>
                 }
             </div>
@@ -187,6 +200,8 @@ else
     private List<PersonBalanceDto> _balances = [];
     private List<SuggestedDebtDto> _debts = [];
     private List<Settlement> _history = [];
+    private Guid? _confirmDeleteSettlementId;
+    private bool _deletingSettlement;
 
     private Guid? _fromPersonId;
     private Guid? _toPersonId;
@@ -264,6 +279,27 @@ else
         finally
         {
             _saving = false;
+        }
+    }
+
+    private async Task DeleteSettlementAsync(Guid settlementId)
+    {
+        _deletingSettlement = true;
+        try
+        {
+            await SettlementService.DeleteAsync(settlementId);
+            _confirmDeleteSettlementId = null;
+            await ReloadAsync();
+            await _toast.ShowAsync("Betaling ongedaan gemaakt");
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _formError = ex.Message;
+            _confirmDeleteSettlementId = null;
+        }
+        finally
+        {
+            _deletingSettlement = false;
         }
     }
 }

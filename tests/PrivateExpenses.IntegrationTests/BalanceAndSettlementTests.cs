@@ -94,6 +94,29 @@ public class BalanceAndSettlementTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DeleteAsync_RemovesTheSettlement_BalancesReturnToWhatTheyWereBefore()
+    {
+        // With no underlying expense, Wesley "paying" Kevin €10 just means Kevin now owes Wesley €10
+        // back — deleting the settlement (undoing a mistaken entry) must erase that debt entirely.
+        var settlementId = await _settlementService.CreateAsync(_wesley.Id, _kevin.Id, 1000, DateOnly.FromDateTime(DateTime.Today), note: null);
+
+        var debtsAfterCreate = await _balanceService.GetSuggestedDebtsAsync();
+        Assert.Equal(1000, debtsAfterCreate.Single(d => d.FromPersonId == _kevin.Id).AmountCents);
+
+        await _settlementService.DeleteAsync(settlementId);
+
+        Assert.Empty(await _balanceService.GetSuggestedDebtsAsync());
+        Assert.Empty(await _settlementService.GetHistoryAsync());
+    }
+
+    [Fact]
+    public async Task DeleteAsync_UnknownSettlementId_ThrowsValidationException()
+    {
+        var ex = await Assert.ThrowsAsync<ExpenseValidationException>(() => _settlementService.DeleteAsync(Guid.NewGuid()));
+        Assert.Contains("bestaat niet", ex.Message);
+    }
+
+    [Fact]
     public async Task CreateAsync_DepositOnlyRefundSharedAmongThree_TheReceiverOwesTheOthersTheirShare()
     {
         // Kevin returns €4,50 of empties that belonged to all three of them equally (€1,50 each). He's

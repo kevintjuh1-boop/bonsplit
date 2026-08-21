@@ -21,6 +21,18 @@ public class SettlementRepository(PrivateExpensesDbContext context) : ISettlemen
             .Take(count)
             .ToListAsync(cancellationToken);
 
+    public Task<Settlement?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
+        context.Settlements
+            .Include(s => s.FromPerson)
+            .Include(s => s.ToPerson)
+            .FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
+
     public async Task AddAsync(Settlement settlement, CancellationToken cancellationToken = default) =>
         await context.Settlements.AddAsync(settlement, cancellationToken);
+
+    public Task DeleteAsync(Settlement settlement, CancellationToken cancellationToken = default)
+    {
+        context.Settlements.Remove(settlement);
+        return Task.CompletedTask;
+    }
 }
