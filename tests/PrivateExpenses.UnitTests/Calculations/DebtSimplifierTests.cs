@@ -1,5 +1,4 @@
 using PrivateExpenses.Domain.Calculations;
-using PrivateExpenses.Domain.Exceptions;
 
 namespace PrivateExpenses.UnitTests.Calculations;
 
@@ -102,10 +101,18 @@ public class DebtSimplifierTests
     }
 
     [Fact]
-    public void Simplify_BalancesThatDoNotSumToZero_Throws()
+    public void Simplify_BalancesThatDoNotSumToZero_MatchesWhatItCanAndLeavesTheResidualUnmatched()
     {
+        // A receipt saved despite a confirmed regels/totaal mismatch can leave real cents unaccounted
+        // for. That must never crash the whole household's balance pages — Wesley's €20 debt to Kevin
+        // still gets suggested; Kevin's extra unmatched €10 (nobody owes it to him) is just dropped.
         var balances = new Dictionary<Guid, long> { [Kevin] = 3000, [Wesley] = -2000 };
 
-        Assert.Throws<DomainException>(() => DebtSimplifier.Simplify(balances));
+        var result = DebtSimplifier.Simplify(balances);
+
+        var debt = Assert.Single(result);
+        Assert.Equal(Wesley, debt.FromPersonId);
+        Assert.Equal(Kevin, debt.ToPersonId);
+        Assert.Equal(2000, debt.AmountCents);
     }
 }

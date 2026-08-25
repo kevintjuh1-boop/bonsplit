@@ -1,5 +1,3 @@
-using PrivateExpenses.Domain.Exceptions;
-
 namespace PrivateExpenses.Domain.Calculations;
 
 public readonly record struct SuggestedDebt(Guid FromPersonId, Guid ToPersonId, long AmountCents);
@@ -10,22 +8,21 @@ public readonly record struct SuggestedDebt(Guid FromPersonId, Guid ToPersonId, 
 ///
 /// Algorithm: greedy largest-creditor-vs-largest-debtor matching. Creditors and debtors are each
 /// sorted by amount descending (ties broken by Person Id for determinism), then repeatedly the
-/// biggest creditor and biggest debtor are matched for min(their remaining amounts) until both sides
-/// are exhausted. This is not guaranteed to produce the mathematically minimal number of transactions
-/// in every case, but it is deterministic, cent-exact, and always financially equivalent to the netted
-/// balances — the same input always simplifies to the same output.
+/// biggest creditor and biggest debtor are matched for min(their remaining amounts) until one side
+/// is exhausted. This is not guaranteed to produce the mathematically minimal number of transactions
+/// in every case, but it is deterministic and cent-exact.
+///
+/// In principle every euro paid by someone in the group is owed by someone else in the group, so the
+/// balances normally net to zero. They can legitimately drift when an expense was saved despite a
+/// confirmed regels/totaal mismatch (the receipt-review page's "sla toch op" override) — real cents
+/// that were paid but never attributed to any item or person. Rather than that one messy receipt
+/// crashing every balance page for the whole household, any such residual is simply left unmatched
+/// once the shorter side runs out, instead of being treated as a hard error.
 /// </summary>
 public static class DebtSimplifier
 {
     public static IReadOnlyList<SuggestedDebt> Simplify(IReadOnlyDictionary<Guid, long> netBalancesCents)
     {
-        var sum = netBalancesCents.Values.Sum();
-        if (sum != 0)
-        {
-            throw new DomainException(
-                $"Saldi moeten optellen tot 0, maar tellen op tot {sum} cent. Er is een fout in de saldoberekening.");
-        }
-
         var creditors = netBalancesCents
             .Where(kv => kv.Value > 0)
             .Select(kv => (Id: kv.Key, Remaining: kv.Value))
