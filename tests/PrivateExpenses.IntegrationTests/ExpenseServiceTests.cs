@@ -295,7 +295,6 @@ public class ExpenseServiceTests : IAsyncLifetime
 
         var externalItem = detail.Items.Single(i => i.Description == "Pizza van Jan");
         Assert.Equal("Jan", externalItem.ExternalRecipientName);
-        Assert.False(externalItem.IsExternalSettled);
         Assert.Empty(externalItem.Shares);
 
         var normalItem = detail.Items.Single(i => i.Description == "Onze pizza's");
@@ -327,7 +326,7 @@ public class ExpenseServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task GetExternalSharesAsync_GroupsAcrossExpenses_AndSetExternalShareSettledAsyncTogglesIt()
+    public async Task GetExternalSharesAsync_GroupsAcrossExpenses_AndTracksWhoFrontedEach()
     {
         await _service.CreateAsync(new CreateExpenseRequest
         {
@@ -342,25 +341,54 @@ public class ExpenseServiceTests : IAsyncLifetime
             MerchantName = "Bon 2",
             ExpenseDate = new DateOnly(2026, 1, 2),
             TotalCents = 500,
-            Items = [new ExpenseItemInput { Description = "Ook voor Jan", TotalCents = 500, ExternalRecipientName = "Jan" }],
-            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 500 }],
+            Items = [new ExpenseItemInput { Description = "Ook voor Jan, door Wesley", TotalCents = 500, ExternalRecipientName = "Jan" }],
+            Payments = [new ExpensePaymentInput { PersonId = _wesley.Id, AmountCents = 500 }],
         });
 
         var shares = await _service.GetExternalSharesAsync();
         Assert.Equal(2, shares.Count);
         Assert.All(shares, s => Assert.Equal("Jan", s.RecipientName));
-        Assert.All(shares, s => Assert.False(s.IsSettled));
 
-        var firstShare = shares.Single(s => s.ItemDescription == "Voor Jan");
-        await _service.SetExternalShareSettledAsync(firstShare.ExpenseItemId, true);
+        var kevinsShare = shares.Single(s => s.ItemDescription == "Voor Jan");
+        Assert.Equal(_kevin.Id, kevinsShare.OwedToPersonId);
+        Assert.Equal("Kevin", kevinsShare.OwedToPersonName);
 
-        shares = await _service.GetExternalSharesAsync();
-        var settled = shares.Single(s => s.ExpenseItemId == firstShare.ExpenseItemId);
-        Assert.True(settled.IsSettled);
-        Assert.NotNull(settled.SettledAt);
+        var wesleysShare = shares.Single(s => s.ItemDescription == "Ook voor Jan, door Wesley");
+        Assert.Equal(_wesley.Id, wesleysShare.OwedToPersonId);
+    }
 
-        var stillOpen = shares.Single(s => s.ItemDescription == "Ook voor Jan");
-        Assert.False(stillOpen.IsSettled);
+    [Fact]
+    public async Task RegisterExternalPaymentAsync_ReducesWhatIsOpen_AndDeleteExternalPaymentAsyncUndoesIt()
+    {
+        await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Bon",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = 1000,
+            Items = [new ExpenseItemInput { Description = "Voor Jan", TotalCents = 1000, ExternalRecipientName = "Jan" }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 1000 }],
+        });
+
+        var paymentId = await _service.RegisterExternalPaymentAsync("Jan", _kevin.Id, 400, DateOnly.FromDateTime(DateTime.Today), note: "eerste deel");
+
+        var payments = await _service.GetExternalPaymentsAsync();
+        var payment = Assert.Single(payments);
+        Assert.Equal("Jan", payment.RecipientName);
+        Assert.Equal(_kevin.Id, payment.OwedToPersonId);
+        Assert.Equal(400, payment.AmountCents);
+        Assert.Equal("eerste deel", payment.Note);
+
+        await _service.DeleteExternalPaymentAsync(paymentId);
+        Assert.Empty(await _service.GetExternalPaymentsAsync());
+    }
+
+    [Fact]
+    public async Task RegisterExternalPaymentAsync_NonPositiveAmount_Throws()
+    {
+        var ex = await Assert.ThrowsAsync<ExpenseValidationException>(() =>
+            _service.RegisterExternalPaymentAsync("Jan", _kevin.Id, 0, DateOnly.FromDateTime(DateTime.Today), note: null));
+
+        Assert.Contains("positief", ex.Message);
     }
 
     [Fact]

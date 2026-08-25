@@ -17,5 +17,8 @@ public interface IExpenseService
     Task SoftDeleteAsync(Guid expenseId, CancellationToken cancellationToken = default);
 
     Task<List<ExternalShareDto>> GetExternalSharesAsync(CancellationToken cancellationToken = default);
-    Task SetExternalShareSettledAsync(Guid expenseItemId, bool isSettled, CancellationToken cancellationToken = default);
+    Task<List<ExternalPaymentDto>> GetExternalPaymentsAsync(CancellationToken cancellationToken = default);
+    Task<Guid> RegisterExternalPaymentAsync(
+        string recipientName, Guid owedToPersonId, long amountCents, DateOnly date, string? note, CancellationToken cancellationToken = default);
+    Task DeleteExternalPaymentAsync(Guid paymentId, CancellationToken cancellationToken = default);
 }

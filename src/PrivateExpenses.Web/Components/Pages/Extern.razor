@@ -1,12 +1,14 @@
 @page "/extern"
+@using PrivateExpenses.Application.Exceptions
 @inject IExpenseService ExpenseService
+@inject PrivateExpenses.Web.Services.CurrentPersonState CurrentPerson
 
 <PageTitle>Extern</PageTitle>
 
 <div class="page-header">
     <div>
         <h1 class="page-title">Extern</h1>
-        <p class="page-subtitle">Bedragen voor mensen buiten Kevin, Wesley en Jos — los van de saldi</p>
+        <p class="page-subtitle">Bedragen die iemand buiten Kevin, Wesley en Jos aan jou terug moet betalen — alleen zichtbaar voor jou</p>
     </div>
 </div>
 
@@ -14,43 +16,138 @@
 {
     <LoadingSpinner />
 }
-else if (_groups.Count == 0)
-{
-    <div class="card">
-        <EmptyState IconName="wallet" Title="Nog geen externe bedragen" Description="Wijs bij het verdelen van een bon een regel toe aan 'Extern' om 'm hier terug te zien." />
-    </div>
-}
 else
 {
-    @foreach (var group in _groups)
+    @if (_errorMessage is not null)
     {
-        <div class="card card-padded" style="margin-bottom:16px;">
-            <div class="card-header">
-                <span class="card-title">@group.RecipientName</span>
-                <span class="text-sm" style="font-weight:800;color:@(group.OpenCents > 0 ? "var(--color-danger-text)" : "var(--color-text-muted)");">
-                    @MoneyFormatter.Format(group.OpenCents) openstaand
-                </span>
-            </div>
-            <div class="stack" style="gap:0;">
-                @foreach (var share in group.Shares)
+        <div class="banner banner-danger" style="margin-bottom:16px;">
+            <Icon Name="alert-triangle" Size="18" />
+            <span>@_errorMessage</span>
+        </div>
+    }
+
+    @if (_groups.Count == 0)
+    {
+        <div class="card">
+            <EmptyState IconName="wallet" Title="Nog geen externe bedragen" Description="Wijs bij het verdelen van een bonregel 'Extern' toe aan iemand buiten de groep om 'm hier terug te zien — alleen bedragen die jij hebt voorgeschoten." />
+        </div>
+    }
+    else
+    {
+        @foreach (var group in _groups)
+        {
+            <div class="card card-padded" style="margin-bottom:16px;">
+                <div class="card-header">
+                    <span class="card-title">@group.RecipientName</span>
+                    <span class="text-sm" style="font-weight:800;color:@(group.OpenCents > 0 ? "var(--color-danger-text)" : "var(--color-text-muted)");">
+                        @MoneyFormatter.Format(group.OpenCents) openstaand
+                    </span>
+                </div>
+
+                <div class="stack" style="gap:0;margin-bottom:12px;">
+                    @foreach (var share in group.Shares)
+                    {
+                        <div class="list-row">
+                            <span class="list-row-icon"><Icon Name="receipt" Size="16" /></span>
+                            <span class="list-row-main">
+                                <span class="list-row-title">@share.ItemDescription</span>
+                                <span class="list-row-subtitle">@share.MerchantName · @share.ExpenseDate.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture)</span>
+                            </span>
+                            <span class="list-row-amount">@MoneyFormatter.Format(share.AmountCents)</span>
+                        </div>
+                    }
+                </div>
+
+                @if (group.Payments.Count > 0)
                 {
-                    <div class="list-row">
-                        <input type="checkbox" checked="@share.IsSettled" @onchange="e => ToggleSettledAsync(share, (bool)e.Value!)" />
-                        <span class="list-row-main">
-                            <span class="list-row-title @(share.IsSettled ? "text-muted" : "")" style="@(share.IsSettled ? "text-decoration:line-through;" : "")">@share.ItemDescription</span>
-                            <span class="list-row-subtitle">@share.MerchantName · @share.ExpenseDate.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture)</span>
-                        </span>
-                        <span class="list-row-amount @(share.IsSettled ? "text-muted" : "")">@MoneyFormatter.Format(share.AmountCents)</span>
+                    <div class="stack" style="gap:0;margin-bottom:12px;">
+                        <span class="text-sm text-muted" style="font-weight:700;padding:4px 0;">Ontvangen betalingen</span>
+                        @foreach (var payment in group.Payments)
+                        {
+                            <div class="list-row">
+                                <span class="list-row-icon"><Icon Name="arrow-swap" Size="16" /></span>
+                                <span class="list-row-main">
+                                    <span class="list-row-title">@MoneyFormatter.Format(payment.AmountCents)</span>
+                                    <span class="list-row-subtitle">
+                                        @payment.PaymentDate.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture)
+                                        @if (!string.IsNullOrWhiteSpace(payment.Note))
+                                        {
+                                            <text> · @payment.Note</text>
+                                        }
+                                    </span>
+                                </span>
+                                @if (_confirmDeletePaymentId == payment.Id)
+                                {
+                                    <div style="display:flex;gap:6px;">
+                                        <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _confirmDeletePaymentId = null">Annuleren</button>
+                                        <button type="button" class="btn btn-danger btn-sm" @onclick="() => DeletePaymentAsync(payment.Id)">Ja</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-secondary btn-icon" title="Betaling verwijderen" @onclick="() => _confirmDeletePaymentId = payment.Id">
+                                        <Icon Name="trash" Size="14" />
+                                    </button>
+                                }
+                            </div>
+                        }
                     </div>
                 }
+
+                @if (_formOpenForRecipient == group.RecipientName)
+                {
+                    <div class="stack" style="gap:8px;padding:10px;background:var(--color-surface-muted);border-radius:var(--radius-sm);">
+                        <div class="grid grid-2">
+                            <div class="field">
+                                <label class="field-label">Bedrag *</label>
+                                <div class="input-money">
+                                    <span class="input-money-prefix">€</span>
+                                    <input inputmode="decimal" @bind="_formAmountText" @bind:event="oninput" />
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="field-label">Datum</label>
+                                <input type="date" class="input" @bind="_formDate" />
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="field-label">Notitie (optioneel)</label>
+                            <input class="input" @bind="_formNote" @bind:event="oninput" />
+                        </div>
+                        <div style="display:flex;gap:8px;justify-content:flex-end;">
+                            <button type="button" class="btn btn-secondary btn-sm" @onclick="CloseForm">Annuleren</button>
+                            <button type="button" class="btn btn-primary btn-sm" disabled="@_saving" @onclick="() => SubmitPaymentAsync(group.RecipientName)">
+                                @(_saving ? "Opslaan…" : "Betaling opslaan")
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="() => OpenForm(group.RecipientName)">
+                        <Icon Name="plus" Size="14" /> Betaling registreren
+                    </button>
+                }
             </div>
-        </div>
+        }
     }
 }
 
+<Toast @ref="_toast" />
+
 @code {
     private bool _loading = true;
+    private bool _saving;
+    private string? _errorMessage;
     private List<RecipientGroup> _groups = [];
+    private Guid? _confirmDeletePaymentId;
+
+    private string? _formOpenForRecipient;
+    private string _formAmountText = "";
+    private DateTime _formDate = DateTime.Today;
+    private string _formNote = "";
+
+    private Toast _toast = null!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -60,22 +157,91 @@ else
 
     private async Task ReloadAsync()
     {
-        var shares = await ExpenseService.GetExternalSharesAsync();
+        if (CurrentPerson.CurrentPersonId is not { } personId)
+        {
+            _groups = [];
+            return;
+        }
+
+        var shares = (await ExpenseService.GetExternalSharesAsync()).Where(s => s.OwedToPersonId == personId).ToList();
+        var payments = (await ExpenseService.GetExternalPaymentsAsync()).Where(p => p.OwedToPersonId == personId).ToList();
+
         _groups = shares
             .GroupBy(s => s.RecipientName)
-            .Select(g => new RecipientGroup(
-                g.Key,
-                g.OrderByDescending(s => s.ExpenseDate).ToList(),
-                g.Where(s => !s.IsSettled).Sum(s => s.AmountCents)))
+            .Select(g =>
+            {
+                var recipientPayments = payments.Where(p => p.RecipientName == g.Key).OrderByDescending(p => p.PaymentDate).ToList();
+                var totalOwed = g.Sum(s => s.AmountCents);
+                var totalPaid = recipientPayments.Sum(p => p.AmountCents);
+                return new RecipientGroup(g.Key, g.OrderByDescending(s => s.ExpenseDate).ToList(), recipientPayments, totalOwed - totalPaid);
+            })
             .OrderByDescending(g => g.OpenCents)
             .ToList();
     }
 
-    private async Task ToggleSettledAsync(ExternalShareDto share, bool settled)
+    private void OpenForm(string recipientName)
     {
-        await ExpenseService.SetExternalShareSettledAsync(share.ExpenseItemId, settled);
-        await ReloadAsync();
+        _formOpenForRecipient = recipientName;
+        _formAmountText = "";
+        _formDate = DateTime.Today;
+        _formNote = "";
+        _errorMessage = null;
     }
 
-    private sealed record RecipientGroup(string RecipientName, List<ExternalShareDto> Shares, long OpenCents);
+    private void CloseForm() => _formOpenForRecipient = null;
+
+    private async Task SubmitPaymentAsync(string recipientName)
+    {
+        _errorMessage = null;
+        if (CurrentPerson.CurrentPersonId is not { } personId)
+        {
+            return;
+        }
+
+        var amountCents = MoneyParsing.ParseToCents(_formAmountText);
+        if (amountCents is null || amountCents <= 0)
+        {
+            _errorMessage = "Vul een geldig bedrag groter dan €0,00 in.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            await ExpenseService.RegisterExternalPaymentAsync(
+                recipientName, personId, amountCents.Value, DateOnly.FromDateTime(_formDate),
+                string.IsNullOrWhiteSpace(_formNote) ? null : _formNote.Trim());
+
+            _formOpenForRecipient = null;
+            await ReloadAsync();
+            await _toast.ShowAsync("Betaling geregistreerd");
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeletePaymentAsync(Guid paymentId)
+    {
+        _errorMessage = null;
+        try
+        {
+            await ExpenseService.DeleteExternalPaymentAsync(paymentId);
+            _confirmDeletePaymentId = null;
+            await ReloadAsync();
+            await _toast.ShowAsync("Betaling verwijderd");
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _confirmDeletePaymentId = null;
+            _errorMessage = ex.Message;
+        }
+    }
+
+    private sealed record RecipientGroup(string RecipientName, List<ExternalShareDto> Shares, List<ExternalPaymentDto> Payments, long OpenCents);
 }

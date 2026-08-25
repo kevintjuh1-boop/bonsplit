@@ -187,19 +187,56 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
         return await uow.Expenses.GetExternalSharesAsync(cancellationToken);
     }
 
-    public async Task SetExternalShareSettledAsync(Guid expenseItemId, bool isSettled, CancellationToken cancellationToken = default)
+    public async Task<List<ExternalPaymentDto>> GetExternalPaymentsAsync(CancellationToken cancellationToken = default)
     {
         await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
-        var item = await uow.Expenses.GetItemByIdAsync(expenseItemId, cancellationToken)
-            ?? throw new ExpenseValidationException("Deze regel bestaat niet (meer).");
+        var payments = await uow.ExternalPayments.GetAllAsync(cancellationToken);
+        return payments
+            .Select(p => new ExternalPaymentDto(p.Id, p.RecipientName, p.OwedToPersonId, p.OwedToPerson!.Name, p.AmountCents, p.PaymentDate, p.Note))
+            .ToList();
+    }
 
-        if (item.ExternalRecipientName is null)
+    public async Task<Guid> RegisterExternalPaymentAsync(
+        string recipientName, Guid owedToPersonId, long amountCents, DateOnly date, string? note, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(recipientName))
         {
-            throw new ExpenseValidationException("Deze regel is niet extern.");
+            throw new ExpenseValidationException("Vul een naam in.");
         }
 
-        item.IsExternalSettled = isSettled;
-        item.ExternalSettledAt = isSettled ? DateTime.UtcNow : null;
+        if (amountCents <= 0)
+        {
+            throw new ExpenseValidationException("Het bedrag van een betaling moet positief zijn.");
+        }
+
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        var owedToPerson = await uow.Persons.GetByIdAsync(owedToPersonId, cancellationToken)
+            ?? throw new ExpenseValidationException("Deze persoon bestaat niet (meer).");
+
+        var payment = new ExternalPayment
+        {
+            Id = Guid.NewGuid(),
+            RecipientName = recipientName.Trim(),
+            OwedToPersonId = owedToPerson.Id,
+            AmountCents = amountCents,
+            PaymentDate = date,
+            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        await uow.ExternalPayments.AddAsync(payment, cancellationToken);
+        await uow.SaveChangesAsync(cancellationToken);
+
+        return payment.Id;
+    }
+
+    public async Task DeleteExternalPaymentAsync(Guid paymentId, CancellationToken cancellationToken = default)
+    {
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        var payment = await uow.ExternalPayments.GetByIdAsync(paymentId, cancellationToken)
+            ?? throw new ExpenseValidationException("Deze betaling bestaat niet (meer).");
+
+        await uow.ExternalPayments.DeleteAsync(payment, cancellationToken);
         await uow.SaveChangesAsync(cancellationToken);
     }
 
@@ -363,7 +400,7 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
             .Select(i => new ExpenseItemDto(
                 i.Id, i.Description, i.Quantity, i.UnitPriceCents, i.TotalCents, i.IsDiscount, i.IsDeposit, i.PromotionLabel, i.SortOrder,
                 i.Shares.Select(s => new ExpenseItemShareDto(s.PersonId, s.Person!.Name, s.Person.Initial, s.Person.ColorKey, s.AmountCents)).ToList(),
-                i.ExternalRecipientName, i.IsExternalSettled))
+                i.ExternalRecipientName))
             .ToList();
 
         var payments = expense.Payments

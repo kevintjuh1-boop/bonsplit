@@ -13,6 +13,7 @@ public interface IUnitOfWork : IAsyncDisposable
     ICategoryRepository Categories { get; }
     IExpenseRepository Expenses { get; }
     ISettlementRepository Settlements { get; }
+    IExternalPaymentRepository ExternalPayments { get; }
     IReceiptDocumentRepository ReceiptDocuments { get; }
     INotificationRepository Notifications { get; }
 

@@ -15,6 +15,7 @@ public class EfUnitOfWork : IUnitOfWork
         Categories = new CategoryRepository(context);
         Expenses = new ExpenseRepository(context);
         Settlements = new SettlementRepository(context);
+        ExternalPayments = new ExternalPaymentRepository(context);
         ReceiptDocuments = new ReceiptDocumentRepository(context);
         Notifications = new NotificationRepository(context);
     }
@@ -23,6 +24,7 @@ public class EfUnitOfWork : IUnitOfWork
     public ICategoryRepository Categories { get; }
     public IExpenseRepository Expenses { get; }
     public ISettlementRepository Settlements { get; }
+    public IExternalPaymentRepository ExternalPayments { get; }
     public IReceiptDocumentRepository ReceiptDocuments { get; }
     public INotificationRepository Notifications { get; }
 

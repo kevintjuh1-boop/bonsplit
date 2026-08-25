@@ -105,13 +105,18 @@ public class ExpenseRepository(PrivateExpensesDbContext context) : IExpenseRepos
         context.ExpenseItems.AsNoTracking()
             .Where(i => i.ExternalRecipientName != null && !i.Expense!.IsDeleted)
             .OrderByDescending(i => i.Expense!.ExpenseDate).ThenByDescending(i => i.CreatedAt)
-            .Select(i => new ExternalShareDto(
-                i.Id, i.ExpenseId, i.ExternalRecipientName!, i.Description,
-                i.Expense!.MerchantName, i.Expense.ExpenseDate, i.TotalCents, i.IsExternalSettled, i.ExternalSettledAt))
+            .Select(i => new
+            {
+                Item = i,
+                // Every current flow records exactly one payment per expense; the first one
+                // deterministically stands in for "whoever fronted this" if that ever isn't true.
+                Payer = i.Expense!.Payments.OrderBy(p => p.Id).First(),
+            })
+            .Select(x => new ExternalShareDto(
+                x.Item.Id, x.Item.ExpenseId, x.Item.ExternalRecipientName!, x.Item.Description,
+                x.Item.Expense!.MerchantName, x.Item.Expense.ExpenseDate, x.Item.TotalCents,
+                x.Payer.PersonId, x.Payer.Person!.Name))
             .ToListAsync(cancellationToken);
-
-    public Task<ExpenseItem?> GetItemByIdAsync(Guid itemId, CancellationToken cancellationToken = default) =>
-        context.ExpenseItems.FirstOrDefaultAsync(i => i.Id == itemId, cancellationToken);
 
     public async Task AddAsync(Expense expense, CancellationToken cancellationToken = default) =>
         await context.Expenses.AddAsync(expense, cancellationToken);

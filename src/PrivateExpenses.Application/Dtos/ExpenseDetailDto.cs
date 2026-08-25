@@ -13,8 +13,7 @@ public sealed record ExpenseItemDto(
     string? PromotionLabel,
     int SortOrder,
     IReadOnlyList<ExpenseItemShareDto> Shares,
-    string? ExternalRecipientName,
-    bool IsExternalSettled);
+    string? ExternalRecipientName);
 
 public sealed record ExpensePaymentDto(Guid PersonId, string PersonName, string PersonInitial, string PersonColorKey, long AmountCents);
 

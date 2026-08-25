@@ -34,9 +34,6 @@ public interface IExpenseRepository
     /// across all non-deleted expenses — the raw feed for the Extern page.</summary>
     Task<List<ExternalShareDto>> GetExternalSharesAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>A single tracked item by id, for toggling its external-settled status.</summary>
-    Task<ExpenseItem?> GetItemByIdAsync(Guid itemId, CancellationToken cancellationToken = default);
-
     Task AddAsync(Expense expense, CancellationToken cancellationToken = default);
 
     void Update(Expense expense);

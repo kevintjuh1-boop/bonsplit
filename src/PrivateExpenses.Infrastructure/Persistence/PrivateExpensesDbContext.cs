@@ -14,6 +14,7 @@ public class PrivateExpensesDbContext(DbContextOptions<PrivateExpensesDbContext>
     public DbSet<ReceiptDocument> ReceiptDocuments => Set<ReceiptDocument>();
     public DbSet<ReceiptDocumentPage> ReceiptDocumentPages => Set<ReceiptDocumentPage>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
+    public DbSet<ExternalPayment> ExternalPayments => Set<ExternalPayment>();
     public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
