@@ -68,6 +68,67 @@ public class ReceiptImportService(
         return new ReceiptUploadResult(document.Id, duplicateMatches);
     }
 
+    public async Task<Guid> AddPageAsync(
+        Guid documentId, Stream content, string originalFileName, string mimeType, long fileSize, CancellationToken cancellationToken = default)
+    {
+        using var buffered = new MemoryStream();
+        await content.CopyToAsync(buffered, cancellationToken);
+        buffered.Position = 0;
+
+        var header = new byte[16];
+        var headerLength = await ReadHeaderAsync(buffered, header, cancellationToken);
+        buffered.Position = 0;
+
+        var validation = ReceiptFileValidator.Validate(originalFileName, mimeType, fileSize, header.AsSpan(0, headerLength));
+        if (!validation.IsValid)
+        {
+            throw new ExpenseValidationException(validation.ErrorMessage!);
+        }
+
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        var document = await uow.ReceiptDocuments.GetByIdAsync(documentId, cancellationToken)
+            ?? throw new ExpenseValidationException("Dit bondocument bestaat niet (meer).");
+
+        // A handful of extra pages (BTW-pagina, achterkant) is the real use case — cap it well below
+        // anything that would meaningfully slow down or bloat a single parse request.
+        if (document.ExtraPages.Count >= 5)
+        {
+            throw new ExpenseValidationException("Je kunt maximaal 6 pagina's aan één bon toevoegen.");
+        }
+
+        var stored = await receiptStorage.SaveAsync(buffered, originalFileName, mimeType, cancellationToken);
+
+        var page = new ReceiptDocumentPage
+        {
+            Id = Guid.NewGuid(),
+            ReceiptDocumentId = documentId,
+            SortOrder = document.ExtraPages.Count,
+            StoredFileName = stored.StoredFileName,
+            MimeType = mimeType,
+            FileSize = stored.FileSize,
+            CreatedAt = DateTime.UtcNow,
+        };
+
+        document.ExtraPages.Add(page);
+        uow.ReceiptDocuments.Update(document);
+        await uow.SaveChangesAsync(cancellationToken);
+
+        return page.Id;
+    }
+
+    public async Task<ReceiptFileContent?> OpenPageFileAsync(Guid pageId, CancellationToken cancellationToken = default)
+    {
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        var page = await uow.ReceiptDocuments.GetPageByIdAsync(pageId, cancellationToken);
+        if (page is null)
+        {
+            return null;
+        }
+
+        var stream = await receiptStorage.OpenAsync(page.StoredFileName, cancellationToken);
+        return new ReceiptFileContent(stream, page.MimeType, page.StoredFileName);
+    }
+
     public async Task<ReceiptParseResult> ParseAsync(Guid documentId, CancellationToken cancellationToken = default)
     {
         await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
@@ -79,16 +140,35 @@ public class ReceiptImportService(
         await uow.SaveChangesAsync(cancellationToken);
 
         ReceiptParseResult result;
+        var extraStreams = new List<Stream>();
         try
         {
             await using var fileStream = await receiptStorage.OpenAsync(document.StoredFileName, cancellationToken);
-            result = await receiptParser.ParseAsync(new ReceiptParseRequest(fileStream, document.MimeType, document.OriginalFileName), cancellationToken);
+
+            var extraPages = new List<ReceiptParsePage>();
+            foreach (var page in document.ExtraPages.OrderBy(p => p.SortOrder))
+            {
+                var pageStream = await receiptStorage.OpenAsync(page.StoredFileName, cancellationToken);
+                extraStreams.Add(pageStream);
+                extraPages.Add(new ReceiptParsePage(pageStream, page.MimeType));
+            }
+
+            result = await receiptParser.ParseAsync(
+                new ReceiptParseRequest(fileStream, document.MimeType, document.OriginalFileName, extraPages.Count > 0 ? extraPages : null),
+                cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Parsing must never crash the upload flow (section 59/109) — a provider failure just
             // routes the user to manual entry with a clear message.
             result = ReceiptParseResult.Failed("Bon kon niet automatisch worden uitgelezen door een onverwachte fout.");
+        }
+        finally
+        {
+            foreach (var stream in extraStreams)
+            {
+                await stream.DisposeAsync();
+            }
         }
 
         document.ParsingProvider = receiptParser.ProviderName;
@@ -161,6 +241,27 @@ public class ReceiptImportService(
         }).ToList();
     }
 
+    public async Task DeletePendingAsync(Guid documentId, CancellationToken cancellationToken = default)
+    {
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        var document = await uow.ReceiptDocuments.GetByIdAsync(documentId, cancellationToken)
+            ?? throw new ExpenseValidationException("Dit concept bestaat niet (meer).");
+
+        if (document.ExpenseId is not null)
+        {
+            throw new ExpenseValidationException("Deze bon is al opgeslagen als uitgave en kan hier niet meer verwijderd worden.");
+        }
+
+        await receiptStorage.DeleteAsync(document.StoredFileName, cancellationToken);
+        foreach (var page in document.ExtraPages)
+        {
+            await receiptStorage.DeleteAsync(page.StoredFileName, cancellationToken);
+        }
+
+        uow.ReceiptDocuments.Delete(document);
+        await uow.SaveChangesAsync(cancellationToken);
+    }
+
     private static async Task<int> ReadHeaderAsync(Stream stream, byte[] buffer, CancellationToken cancellationToken)
     {
         var totalRead = 0;
@@ -180,5 +281,6 @@ public class ReceiptImportService(
 
     private static ReceiptDocumentDto ToDto(ReceiptDocument document) => new(
         document.Id, document.ExpenseId, document.OriginalFileName, document.MimeType, document.FileSize,
-        document.UploadedAt, document.ParsingStatus, document.ParsingProvider, document.ParsingError);
+        document.UploadedAt, document.ParsingStatus, document.ParsingProvider, document.ParsingError,
+        document.ExtraPages.OrderBy(p => p.SortOrder).Select(p => new ReceiptDocumentPageDto(p.Id, p.MimeType)).ToList());
 }

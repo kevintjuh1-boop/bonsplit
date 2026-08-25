@@ -72,16 +72,36 @@ else
 
     <div class="review-columns">
         <div class="review-preview @(_mobileTab == MobileTab.Bon ? "" : "mobile-hidden")">
-            <div class="card" style="position:sticky;top:16px;">
+            <div class="card stack" style="position:sticky;top:16px;gap:12px;">
                 @if (_document is not null)
                 {
+                    @if (_document.ExtraPages.Count > 0)
+                    {
+                        <span class="text-sm text-muted" style="padding:12px 12px 0;">Pagina 1 / @(_document.ExtraPages.Count + 1)</span>
+                    }
                     @if (_document.MimeType == "application/pdf")
                     {
-                        <iframe src="@FileUrl" title="Bon" style="width:100%;height:75vh;border:none;border-radius:var(--radius-lg);"></iframe>
+                        <iframe src="@FileUrl" title="Bon pagina 1" style="width:100%;height:75vh;border:none;border-radius:var(--radius-lg);"></iframe>
                     }
                     else
                     {
-                        <img src="@FileUrl" alt="Bon" style="width:100%;border-radius:var(--radius-lg);display:block;" />
+                        <img src="@FileUrl" alt="Bon pagina 1" style="width:100%;border-radius:var(--radius-lg);display:block;" />
+                    }
+
+                    @for (var pageIndex = 0; pageIndex < _document.ExtraPages.Count; pageIndex++)
+                    {
+                        var page = _document.ExtraPages[pageIndex];
+                        var pageNumber = pageIndex + 2;
+                        var pageUrl = $"/api/receipts/pages/{page.Id}/file";
+                        <span class="text-sm text-muted" style="padding:0 12px;">Pagina @pageNumber / @(_document.ExtraPages.Count + 1)</span>
+                        @if (page.MimeType == "application/pdf")
+                        {
+                            <iframe src="@pageUrl" title="@($"Bon pagina {pageNumber}")" style="width:100%;height:75vh;border:none;border-radius:var(--radius-lg);"></iframe>
+                        }
+                        else
+                        {
+                            <img src="@pageUrl" alt="@($"Bon pagina {pageNumber}")" style="width:100%;border-radius:var(--radius-lg);display:block;" />
+                        }
                     }
                 }
             </div>

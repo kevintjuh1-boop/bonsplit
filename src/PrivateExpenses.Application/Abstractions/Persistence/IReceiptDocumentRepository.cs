@@ -6,6 +6,8 @@ public interface IReceiptDocumentRepository
 {
     Task<ReceiptDocument?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
+    Task<ReceiptDocumentPage?> GetPageByIdAsync(Guid pageId, CancellationToken cancellationToken = default);
+
     /// <summary>Finds prior uploads with the exact same file content, for duplicate-upload detection.</summary>
     Task<List<ReceiptDocument>> GetByHashAsync(string sha256Hash, CancellationToken cancellationToken = default);
 
@@ -21,4 +23,6 @@ public interface IReceiptDocumentRepository
     Task AddAsync(ReceiptDocument document, CancellationToken cancellationToken = default);
 
     void Update(ReceiptDocument document);
+
+    void Delete(ReceiptDocument document);
 }

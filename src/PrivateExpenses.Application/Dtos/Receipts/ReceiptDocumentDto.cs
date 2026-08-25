@@ -2,6 +2,8 @@ using PrivateExpenses.Domain.Enums;
 
 namespace PrivateExpenses.Application.Dtos.Receipts;
 
+public sealed record ReceiptDocumentPageDto(Guid Id, string MimeType);
+
 public sealed record ReceiptDocumentDto(
     Guid Id,
     Guid? ExpenseId,
@@ -11,7 +13,8 @@ public sealed record ReceiptDocumentDto(
     DateTime UploadedAt,
     ParsingStatus ParsingStatus,
     string? ParsingProvider,
-    string? ParsingError);
+    string? ParsingError,
+    IReadOnlyList<ReceiptDocumentPageDto> ExtraPages);
 
 public sealed record DuplicateMatchDto(Guid ExpenseId, string MerchantName, DateOnly ExpenseDate, long TotalCents);
 

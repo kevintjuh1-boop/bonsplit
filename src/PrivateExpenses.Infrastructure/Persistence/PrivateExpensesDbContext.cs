@@ -12,6 +12,7 @@ public class PrivateExpensesDbContext(DbContextOptions<PrivateExpensesDbContext>
     public DbSet<ExpenseItemShare> ExpenseItemShares => Set<ExpenseItemShare>();
     public DbSet<ExpensePayment> ExpensePayments => Set<ExpensePayment>();
     public DbSet<ReceiptDocument> ReceiptDocuments => Set<ReceiptDocument>();
+    public DbSet<ReceiptDocumentPage> ReceiptDocumentPages => Set<ReceiptDocumentPage>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
     public DbSet<Notification> Notifications => Set<Notification>();
 

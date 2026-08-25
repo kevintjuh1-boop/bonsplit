@@ -2,7 +2,14 @@ using PrivateExpenses.Application.Dtos.Receipts;
 
 namespace PrivateExpenses.Application.Abstractions.Parsing;
 
-public sealed record ReceiptParseRequest(Stream FileContent, string MimeType, string OriginalFileName);
+/// <summary>An additional page of the same physical receipt as the request's primary
+/// <see cref="ReceiptParseRequest.FileContent"/> — e.g. a second page a store prints its BTW
+/// breakdown on. Sent to the provider alongside the primary page as one logical document.</summary>
+public sealed record ReceiptParsePage(Stream Content, string MimeType);
+
+public sealed record ReceiptParseRequest(
+    Stream FileContent, string MimeType, string OriginalFileName,
+    IReadOnlyList<ReceiptParsePage>? ExtraPages = null);
 
 /// <summary>
 /// Reads a receipt file and extracts structured data. Fully provider-independent — Blazor components

@@ -41,6 +41,13 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
         You are extracting structured data from a photo or PDF of a shop receipt or invoice, for a
         private expense-splitting app used by three housemates in the Netherlands.
 
+        You may be given more than one image/document in this message. When that happens, they are
+        always multiple pages or photos of the SAME single physical receipt (e.g. a long receipt
+        photographed in two overlapping shots, or a second page some stores print their BTW/VAT
+        breakdown on) — never separate, unrelated receipts. Read them together as one document: merge
+        the item lines from all pages into a single items list in their original order, and take
+        subtotal/discount/deposit/tax/total from wherever on any page they're actually printed.
+
         Follow these rules strictly:
         - Extract ONLY information that is visibly printed on the document. Never invent, guess, or
           infer a product, price, or other value that is not actually shown.
@@ -121,23 +128,18 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
 
         try
         {
-            await using var buffered = new MemoryStream();
-            await request.FileContent.CopyToAsync(buffered, timeoutCts.Token);
-
-            var mediaType = request.MimeType;
-            string base64Data;
-            if (request.MimeType == "application/pdf")
+            var content = new List<ContentBlockParam> { await BuildDocumentBlockAsync(request.FileContent, request.MimeType, timeoutCts.Token) };
+            foreach (var page in request.ExtraPages ?? [])
             {
-                base64Data = Convert.ToBase64String(buffered.ToArray());
-            }
-            else
-            {
-                (base64Data, mediaType) = await PrepareImageForUploadAsync(buffered, request.MimeType, timeoutCts.Token);
+                content.Add(await BuildDocumentBlockAsync(page.Content, page.MimeType, timeoutCts.Token));
             }
 
-            ContentBlockParam documentBlock = request.MimeType == "application/pdf"
-                ? new DocumentBlockParam { Source = new Base64PdfSource { Data = base64Data } }
-                : new ImageBlockParam { Source = new Base64ImageSource { Data = base64Data, MediaType = mediaType } };
+            content.Add(new TextBlockParam
+            {
+                Text = content.Count > 1
+                    ? $"These {content.Count} images/documents are pages of the same single receipt. Extract it according to the JSON shape described in your instructions."
+                    : "Extract this receipt according to the JSON shape described in your instructions.",
+            });
 
             var parameters = new MessageCreateParams
             {
@@ -149,15 +151,7 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
                 System = SystemPrompt,
                 Messages =
                 [
-                    new MessageParam
-                    {
-                        Role = Role.User,
-                        Content = new List<ContentBlockParam>
-                        {
-                            documentBlock,
-                            new TextBlockParam { Text = "Extract this receipt according to the JSON shape described in your instructions." },
-                        },
-                    },
+                    new MessageParam { Role = Role.User, Content = content },
                 ],
                 // Claude Opus 5 thinks by default (adaptive, effort "high"), and MaxTokens caps
                 // thinking + output combined. For a real receipt photo that reliably burned the whole
@@ -233,6 +227,23 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
             logger.LogError(ex, "Receipt parsing via Anthropic failed.");
             return ReceiptParseResult.Failed("Bon kon niet automatisch worden uitgelezen door een fout bij de AI-provider.");
         }
+    }
+
+    /// <summary>Reads one page's bytes (the primary file or an extra page) and builds the matching
+    /// Anthropic content block — a PDF document block, or an image block with oversized photos
+    /// downscaled first.</summary>
+    private async Task<ContentBlockParam> BuildDocumentBlockAsync(Stream content, string mimeType, CancellationToken cancellationToken)
+    {
+        await using var buffered = new MemoryStream();
+        await content.CopyToAsync(buffered, cancellationToken);
+
+        if (mimeType == "application/pdf")
+        {
+            return new DocumentBlockParam { Source = new Base64PdfSource { Data = Convert.ToBase64String(buffered.ToArray()) } };
+        }
+
+        var (base64Data, resolvedMimeType) = await PrepareImageForUploadAsync(buffered, mimeType, cancellationToken);
+        return new ImageBlockParam { Source = new Base64ImageSource { Data = base64Data, MediaType = resolvedMimeType } };
     }
 
     /// <summary>Anthropic hard-rejects any image over 8000px in either dimension — a real failure mode

@@ -1,0 +1,113 @@
+@page "/concepten"
+@using PrivateExpenses.Application.Exceptions
+@inject IReceiptImportService ReceiptImportService
+
+<PageTitle>Concepten</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Concepten</h1>
+        <p class="page-subtitle">Gescand maar nog niet verdeeld</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else
+{
+    @if (_errorMessage is not null)
+    {
+        <div class="banner banner-danger" style="margin-bottom:16px;">
+            <Icon Name="alert-triangle" Size="18" />
+            <span>@_errorMessage</span>
+        </div>
+    }
+
+    @if (_pending.Count == 0)
+    {
+        <div class="card">
+            <EmptyState IconName="receipt" Title="Geen concepten" Description="Bonnen die je scant maar nog niet verdeelt, verschijnen hier zodat je later verder kunt." />
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="stack" style="gap:0;">
+                @foreach (var pending in _pending)
+                {
+                    <div class="list-row" style="flex-wrap:wrap;">
+                        <a href="@($"/bon/{pending.DocumentId}/beoordelen")" class="list-row-icon" style="text-decoration:none;">
+                            <Icon Name="receipt" Size="18" />
+                        </a>
+                        <a href="@($"/bon/{pending.DocumentId}/beoordelen")" class="list-row-main" style="text-decoration:none;color:inherit;min-width:180px;">
+                            <span class="list-row-title">@(pending.MerchantName ?? "Onbekende winkel")</span>
+                            <span class="list-row-subtitle">
+                                @(pending.Date?.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture) ?? pending.UploadedAt.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture))
+                            </span>
+                        </a>
+                        @if (pending.TotalCents is { } totalCents)
+                        {
+                            <span class="list-row-amount">@MoneyFormatter.Format(totalCents)</span>
+                        }
+                        @if (_confirmDeleteId == pending.DocumentId)
+                        {
+                            <div style="display:flex;gap:6px;justify-content:flex-end;flex-basis:100%;margin-top:8px;">
+                                <button type="button" class="btn btn-secondary btn-sm" @onclick="() => _confirmDeleteId = null">Annuleren</button>
+                                <button type="button" class="btn btn-danger btn-sm" disabled="@_deleting" @onclick="() => DeleteAsync(pending.DocumentId)">Ja, verwijderen</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-secondary btn-icon" style="margin-left:8px;" title="Concept verwijderen" @onclick="() => _confirmDeleteId = pending.DocumentId">
+                                <Icon Name="trash" Size="16" />
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+<Toast @ref="_toast" />
+
+@code {
+    private bool _loading = true;
+    private bool _deleting;
+    private string? _errorMessage;
+    private List<PendingReceiptDto> _pending = [];
+    private Guid? _confirmDeleteId;
+    private Toast _toast = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync() => _pending = await ReceiptImportService.GetPendingReviewAsync();
+
+    private async Task DeleteAsync(Guid documentId)
+    {
+        _deleting = true;
+        _errorMessage = null;
+        try
+        {
+            await ReceiptImportService.DeletePendingAsync(documentId);
+            _confirmDeleteId = null;
+            await ReloadAsync();
+            await _toast.ShowAsync("Concept verwijderd");
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _confirmDeleteId = null;
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _deleting = false;
+        }
+    }
+}

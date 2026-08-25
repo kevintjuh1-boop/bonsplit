@@ -23,5 +23,27 @@ public class ReceiptDocumentConfiguration : IEntityTypeConfiguration<ReceiptDocu
         builder.HasIndex(d => d.StoredFileName).IsUnique();
         builder.HasIndex(d => d.FileHash);
         builder.HasIndex(d => d.ExpenseId);
+
+        builder.HasMany(d => d.ExtraPages)
+            .WithOne(p => p.ReceiptDocument)
+            .HasForeignKey(p => p.ReceiptDocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ReceiptDocumentPageConfiguration : IEntityTypeConfiguration<ReceiptDocumentPage>
+{
+    public void Configure(EntityTypeBuilder<ReceiptDocumentPage> builder)
+    {
+        builder.ToTable("ReceiptDocumentPages");
+        builder.HasKey(p => p.Id);
+        builder.Property(p => p.Id).ValueGeneratedNever();
+
+        builder.Property(p => p.StoredFileName).IsRequired().HasMaxLength(260);
+        builder.Property(p => p.MimeType).IsRequired().HasMaxLength(100);
+        builder.Property(p => p.CreatedAt).IsRequired();
+
+        builder.HasIndex(p => p.StoredFileName).IsUnique();
+        builder.HasIndex(p => p.ReceiptDocumentId);
     }
 }

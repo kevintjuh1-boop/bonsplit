@@ -24,4 +24,10 @@ public class ReceiptDocument
     public string? RawStructuredResult { get; set; }
 
     public DateTime CreatedAt { get; set; }
+
+    /// <summary>Additional pages of the same physical receipt (e.g. a second page a store prints its
+    /// BTW breakdown on), beyond the primary page held on this document's own fields. Sent to the
+    /// parser together with the primary page as one logical document, and shown alongside it on the
+    /// review page.</summary>
+    public ICollection<ReceiptDocumentPage> ExtraPages { get; set; } = new List<ReceiptDocumentPage>();
 }

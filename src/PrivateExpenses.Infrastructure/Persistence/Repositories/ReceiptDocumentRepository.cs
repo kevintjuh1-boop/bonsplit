@@ -8,7 +8,13 @@ namespace PrivateExpenses.Infrastructure.Persistence.Repositories;
 public class ReceiptDocumentRepository(PrivateExpensesDbContext context) : IReceiptDocumentRepository
 {
     public Task<ReceiptDocument?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
-        context.ReceiptDocuments.Include(d => d.Expense).FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+        context.ReceiptDocuments
+            .Include(d => d.Expense)
+            .Include(d => d.ExtraPages)
+            .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+
+    public Task<ReceiptDocumentPage?> GetPageByIdAsync(Guid pageId, CancellationToken cancellationToken = default) =>
+        context.ReceiptDocumentPages.FirstOrDefaultAsync(p => p.Id == pageId, cancellationToken);
 
     public Task<List<ReceiptDocument>> GetByHashAsync(string sha256Hash, CancellationToken cancellationToken = default) =>
         context.ReceiptDocuments.AsNoTracking()
@@ -44,4 +50,6 @@ public class ReceiptDocumentRepository(PrivateExpensesDbContext context) : IRece
         await context.ReceiptDocuments.AddAsync(document, cancellationToken);
 
     public void Update(ReceiptDocument document) => context.ReceiptDocuments.Update(document);
+
+    public void Delete(ReceiptDocument document) => context.ReceiptDocuments.Remove(document);
 }

@@ -147,6 +147,13 @@ app.MapGet("/api/receipts/{id:guid}/file", async (Guid id, IReceiptImportService
     return file is null ? Results.NotFound() : Results.File(file.Content, file.MimeType, enableRangeProcessing: true);
 });
 
+// Extra pages (e.g. a second page a store prints its BTW breakdown on) — same reasoning as above.
+app.MapGet("/api/receipts/pages/{pageId:guid}/file", async (Guid pageId, IReceiptImportService receiptImportService, CancellationToken cancellationToken) =>
+{
+    var file = await receiptImportService.OpenPageFileAsync(pageId, cancellationToken);
+    return file is null ? Results.NotFound() : Results.File(file.Content, file.MimeType, enableRangeProcessing: true);
+});
+
 // Profile photos, same reasoning as receipt files above — served only through this controlled
 // endpoint, 404s when a person has no avatar set.
 app.MapGet("/api/personen/{id:guid}/avatar", async (Guid id, IPersonService personService, CancellationToken cancellationToken) =>
@@ -177,6 +184,21 @@ app.MapGet("/api/export/expenses", async (
     var csvBytes = await exportService.ExportExpensesToCsvAsync(filter, cancellationToken);
     var fileName = $"uitgaven-{DateTime.Now:yyyy-MM-dd}.csv";
     return Results.File(csvBytes, "text/csv", fileName);
+});
+
+// Read-only JSON projections for the Kevin OS dashboard. Same balance/expense math as the Blazor
+// pages (IBalanceService/IExpenseService), just exposed as JSON. Protected by the same shared-password
+// gate above like every other /api/* route here.
+app.MapGet("/api/balances", async (IBalanceService balanceService, CancellationToken cancellationToken) =>
+{
+    var balances = await balanceService.GetPersonBalancesAsync(cancellationToken);
+    return Results.Ok(balances);
+});
+
+app.MapGet("/api/expenses/recent", async (int? take, IExpenseService expenseService, CancellationToken cancellationToken) =>
+{
+    var expenses = await expenseService.GetRecentAsync(take ?? 5, cancellationToken);
+    return Results.Ok(expenses);
 });
 
 app.Run();

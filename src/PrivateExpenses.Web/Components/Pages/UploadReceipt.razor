@@ -96,11 +96,47 @@ else if (_stage == Stage.PickFile)
         </div>
     </div>
 }
+else if (_stage == Stage.AddMorePages)
+{
+    <div class="card card-padded" style="max-width:480px;position:relative;">
+        @if (_uploadingFile)
+        {
+            <div class="upload-progress-overlay">
+                <LoadingSpinner Size="36" />
+                <p style="font-weight:700;margin:14px 0 2px;">Pagina uploaden…</p>
+            </div>
+        }
+        <div class="banner banner-success" style="margin-bottom:14px;">
+            <Icon Name="check-circle" Size="16" />
+            <span>@_pageCount @(_pageCount == 1 ? "pagina" : "pagina's") toegevoegd</span>
+        </div>
+        <p class="text-muted text-sm" style="margin:0 0 14px;">
+            Print de winkel een BTW-overzicht of het vervolg van de bon op een 2e pagina (zoals bij
+            Sligro)? Voeg die hier toe voordat je verdergaat, anders ziet de AI 'm niet.
+        </p>
+        @if (_extraPageError is not null)
+        {
+            <div class="banner banner-danger" style="margin-bottom:14px;">
+                <Icon Name="alert-triangle" Size="16" />
+                <span>@_extraPageError</span>
+            </div>
+        }
+        <div class="stack" style="gap:10px;">
+            <label class="btn btn-secondary btn-block" for="receipt-extra-page">
+                <Icon Name="plus" Size="16" /> Nog een pagina toevoegen
+                <InputFile @key="_extraPageInputKey" id="receipt-extra-page" OnChange="OnExtraPageSelected" accept=".jpg,.jpeg,.png,.webp,.pdf" class="visually-hidden" />
+            </label>
+            <button type="button" class="btn btn-primary btn-block" @onclick="ContinueToAnalysisAsync">
+                Bon analyseren
+            </button>
+        </div>
+    </div>
+}
 else if (_stage != Stage.Error)
 {
     <div class="card card-padded" style="max-width:480px;">
         <div class="stack" style="gap:14px;">
-            @foreach (var step in ProgressSteps)
+            @foreach (var (step, stepNumber) in ProgressSteps.Select((kv, i) => (kv, i + 1)))
             {
                 var done = step.Key < _stage;
                 var current = step.Key == _stage;
@@ -112,7 +148,7 @@ else if (_stage != Stage.Error)
                         }
                         else
                         {
-                            <span>@((int)step.Key + 1)</span>
+                            <span>@stepNumber</span>
                         }
                     </span>
                     <span class="text-sm" style="font-weight:@(current || done ? "700" : "500");color:@(current || done ? "var(--color-text)" : "var(--color-text-subtle))");">
@@ -190,7 +226,7 @@ else if (_stage != Stage.Error)
 </style>
 
 @code {
-    private enum Stage { PickFile, Uploading, PreparingDocument, Analyzing, RecognizingItems, ReviewingResult, Error }
+    private enum Stage { PickFile, Uploading, AddMorePages, PreparingDocument, Analyzing, RecognizingItems, ReviewingResult, Error }
 
     private static readonly Dictionary<Stage, string> ProgressSteps = new()
     {
@@ -209,6 +245,9 @@ else if (_stage != Stage.Error)
     private int _analyzingSeconds;
     private bool _uploadingFile;
     private int _uploadSeconds;
+    private int _pageCount;
+    private string? _extraPageError;
+    private int _extraPageInputKey;
 
     // Bumped every time we return to the picker so the <InputFile> elements are torn down and
     // recreated (via @key) rather than reused. A reused element keeps the browser's previous
@@ -301,16 +340,58 @@ else if (_stage != Stage.Error)
 
         if (_stage == Stage.Uploading)
         {
-            await ContinueToAnalysisAsync();
+            _stage = Stage.AddMorePages;
+            _pageCount = 1;
         }
 
         StateHasChanged();
     }
 
-    private Task ContinueAfterDuplicateAsync()
+    private void ContinueAfterDuplicateAsync()
     {
         _duplicateAcknowledged = true;
-        return ContinueToAnalysisAsync();
+        _stage = Stage.AddMorePages;
+        _pageCount = 1;
+    }
+
+    private async Task OnExtraPageSelected(InputFileChangeEventArgs e)
+    {
+        _extraPageError = null;
+        var file = e.File;
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(180));
+
+        _uploadingFile = true;
+        StateHasChanged();
+
+        try
+        {
+            await using var stream = file.OpenReadStream(ReceiptFileValidator.MaxFileSizeBytes, timeoutCts.Token);
+            await ReceiptImportService.AddPageAsync(_documentId, stream, file.Name, file.ContentType, file.Size, timeoutCts.Token);
+            _pageCount++;
+        }
+        catch (ExpenseValidationException ex)
+        {
+            _extraPageError = ex.Message;
+        }
+        catch (IOException)
+        {
+            _extraPageError = $"Dit bestand is te groot. Maximaal {ReceiptFileValidator.MaxFileSizeBytes / 1024 / 1024} MB.";
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+        {
+            _extraPageError = "Uploaden duurde te lang. Controleer je verbinding en probeer het opnieuw.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Adding an extra receipt page failed unexpectedly for document {DocumentId}", _documentId);
+            _extraPageError = "Toevoegen van de pagina is onverwacht mislukt. Probeer het opnieuw.";
+        }
+        finally
+        {
+            _uploadingFile = false;
+            _extraPageInputKey++;
+            StateHasChanged();
+        }
     }
 
     private async Task ContinueToAnalysisAsync()
@@ -366,6 +447,8 @@ else if (_stage != Stage.Error)
         _errorMessage = null;
         _duplicateMatches = [];
         _duplicateAcknowledged = false;
+        _pageCount = 0;
+        _extraPageError = null;
         _inputKey++;
     }
 

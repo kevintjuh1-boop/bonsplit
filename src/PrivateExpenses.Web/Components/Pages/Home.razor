@@ -48,10 +48,13 @@ else
     @if (_pendingReceipts.Count > 0)
     {
         <div class="card card-padded" style="margin-bottom:20px;">
-            <div class="card-header"><span class="card-title">Concepten</span></div>
+            <div class="card-header">
+                <span class="card-title">Concepten</span>
+                <a href="/concepten" class="btn btn-ghost btn-sm">Alles bekijken</a>
+            </div>
             <p class="text-sm text-muted" style="margin-top:-4px;margin-bottom:8px;">Gescand maar nog niet verdeeld — ga verder waar je gebleven was.</p>
             <div class="stack" style="gap:0;">
-                @foreach (var pending in _pendingReceipts)
+                @foreach (var pending in _pendingReceipts.Take(3))
                 {
                     <a href="@($"/bon/{pending.DocumentId}/beoordelen")" class="list-row">
                         <span class="list-row-icon"><Icon Name="receipt" Size="18" /></span>
