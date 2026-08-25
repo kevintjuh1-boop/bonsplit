@@ -259,7 +259,28 @@ else
                                     </button>
                                 </div>
 
-                                @if (item.ExternalRecipientName is not null)
+                                @if (item.ShowSplitForm)
+                                {
+                                    <div class="stack" style="gap:6px;margin-top:8px;padding:10px;background:var(--color-surface-muted);border-radius:var(--radius-sm);">
+                                        <label class="text-sm text-muted">Regel splitsen: deel voor iemand buiten de groep</label>
+                                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                            <input class="input" style="flex:1;min-width:120px;" placeholder="Naam" @bind="item.SplitExternalName" @bind:event="oninput" />
+                                            <div class="input-money" style="width:120px;">
+                                                <span class="input-money-prefix">€</span>
+                                                <input inputmode="decimal" @bind="item.SplitAmountText" @bind:event="oninput" />
+                                            </div>
+                                        </div>
+                                        @if (item.SplitError is not null)
+                                        {
+                                            <span class="text-sm" style="color:var(--color-danger-text);">@item.SplitError</span>
+                                        }
+                                        <div style="display:flex;gap:8px;">
+                                            <button type="button" class="btn btn-ghost btn-sm" @onclick="() => CancelSplit(item)">Annuleren</button>
+                                            <button type="button" class="btn btn-primary btn-sm" @onclick="() => ApplySplit(item)">Splitsen</button>
+                                        </div>
+                                    </div>
+                                }
+                                else if (item.ExternalRecipientName is not null)
                                 {
                                     <div class="stack" style="gap:6px;margin-top:8px;padding:10px;background:var(--color-surface-muted);border-radius:var(--radius-sm);">
                                         <label class="text-sm text-muted">Voor wie (buiten de groep)?</label>
@@ -286,6 +307,7 @@ else
                                         }
                                         <button type="button" class="btn btn-ghost btn-sm" @onclick="() => EnableCustomSplit(item)">Aangepast verdelen</button>
                                         <button type="button" class="btn btn-ghost btn-sm" @onclick="() => EnableExternal(item)">Extern</button>
+                                        <button type="button" class="btn btn-ghost btn-sm" @onclick="() => StartSplit(item)">Splits: deels extern</button>
                                     </div>
                                 }
                                 else
@@ -559,6 +581,51 @@ else
 
     private void DisableExternal(ReviewItem item) => item.ExternalRecipientName = null;
 
+    private void StartSplit(ReviewItem item)
+    {
+        item.ShowSplitForm = true;
+        item.SplitExternalName = "";
+        item.SplitAmountText = "0,00";
+        item.SplitError = null;
+    }
+
+    private void CancelSplit(ReviewItem item)
+    {
+        item.ShowSplitForm = false;
+        item.SplitError = null;
+    }
+
+    private void ApplySplit(ReviewItem item)
+    {
+        var name = item.SplitExternalName.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            item.SplitError = "Vul een naam in.";
+            return;
+        }
+
+        var amount = MoneyParsing.ParseToCents(item.SplitAmountText);
+        if (amount is null || amount <= 0 || amount >= item.TotalCents)
+        {
+            item.SplitError = $"Vul een bedrag tussen € 0,00 en {MoneyFormatter.Format(item.TotalCents)} in.";
+            return;
+        }
+
+        var externalItem = new ReviewItem
+        {
+            Description = item.Description,
+            TotalCents = amount.Value,
+            ExternalRecipientName = name,
+        };
+
+        item.TotalCents -= amount.Value;
+        item.ShowSplitForm = false;
+        item.SplitError = null;
+
+        var insertAt = _items.IndexOf(item) + 1;
+        _items.Insert(insertAt, externalItem);
+    }
+
     private void ClearSelection()
     {
         foreach (var item in _items)
@@ -703,6 +770,14 @@ else
 
         public bool CustomSplitEnabled { get; set; }
         public Dictionary<Guid, string> CustomAmountText { get; set; } = [];
+
+        // Transient state for splitting part of this line off to someone outside the group (e.g. a
+        // BTW correction line that covers both the group's items and an external person's items) —
+        // never sent to the server directly; ApplySplit turns it into a second, fully-external item.
+        public bool ShowSplitForm { get; set; }
+        public string SplitExternalName { get; set; } = "";
+        public string SplitAmountText { get; set; } = "0,00";
+        public string? SplitError { get; set; }
 
         /// <summary>Null when this line is split among the group as usual; otherwise the whole line is
         /// for someone outside the group, tracked separately (never both at once).</summary>
