@@ -240,6 +240,130 @@ public class ExpenseServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UpdateCategoryAsync_ChangesCategoryEvenForAMultiItemMultiPayerExpense()
+    {
+        // The category picker on the expense detail page must work regardless of item/payer count —
+        // unlike the full edit flow, which is gated to single-item, single-payment expenses only.
+        var expenseId = await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Jumbo",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = 1000,
+            Items =
+            [
+                new ExpenseItemInput { Description = "Brood", TotalCents = 500, ParticipantPersonIdsInOrder = [_kevin.Id] },
+                new ExpenseItemInput { Description = "Melk", TotalCents = 500, ParticipantPersonIdsInOrder = [_wesley.Id] },
+            ],
+            Payments =
+            [
+                new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 500 },
+                new ExpensePaymentInput { PersonId = _wesley.Id, AmountCents = 500 },
+            ],
+        });
+
+        await using var uow = await _db.UnitOfWorkFactory.CreateAsync();
+        var category = (await uow.Categories.GetAllAsync()).First();
+
+        await _service.UpdateCategoryAsync(expenseId, category.Id);
+
+        var detail = await _service.GetDetailAsync(expenseId);
+        Assert.Equal(category.Id, detail!.CategoryId);
+
+        await _service.UpdateCategoryAsync(expenseId, null);
+        detail = await _service.GetDetailAsync(expenseId);
+        Assert.Null(detail!.CategoryId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ItemWithExternalRecipient_GetsNoSharesAndIsExcludedFromTheGroupSplit()
+    {
+        var expenseId = await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Etentje met vrienden",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = 3000,
+            Items =
+            [
+                new ExpenseItemInput { Description = "Onze pizza's", TotalCents = 2000, ParticipantPersonIdsInOrder = [_kevin.Id, _wesley.Id] },
+                new ExpenseItemInput { Description = "Pizza van Jan", TotalCents = 1000, ExternalRecipientName = "Jan" },
+            ],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 3000 }],
+        });
+
+        var detail = await _service.GetDetailAsync(expenseId);
+        Assert.NotNull(detail);
+
+        var externalItem = detail.Items.Single(i => i.Description == "Pizza van Jan");
+        Assert.Equal("Jan", externalItem.ExternalRecipientName);
+        Assert.False(externalItem.IsExternalSettled);
+        Assert.Empty(externalItem.Shares);
+
+        var normalItem = detail.Items.Single(i => i.Description == "Onze pizza's");
+        Assert.Null(normalItem.ExternalRecipientName);
+        Assert.Equal(2, normalItem.Shares.Count);
+
+        // Kevin fronted the whole €30, but only €20 was ever "the group's" — the other €10 is Jan's,
+        // tracked separately, so it must not inflate what Wesley owes Kevin.
+        var kevinNet = detail.PersonTotals.Single(p => p.PersonId == _kevin.Id);
+        var wesleyNet = detail.PersonTotals.Single(p => p.PersonId == _wesley.Id);
+        Assert.Equal(1000, kevinNet.OwedCents);
+        Assert.Equal(1000, wesleyNet.OwedCents);
+        Assert.Equal(3000, kevinNet.PaidCents);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ItemWithExternalRecipientAndParticipants_ThrowsValidationException()
+    {
+        var ex = await Assert.ThrowsAsync<ExpenseValidationException>(() => _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Verkeerd ingevuld",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = 1000,
+            Items = [new ExpenseItemInput { Description = "Item", TotalCents = 1000, ExternalRecipientName = "Jan", ParticipantPersonIdsInOrder = [_kevin.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 1000 }],
+        }));
+
+        Assert.Contains("extern", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetExternalSharesAsync_GroupsAcrossExpenses_AndSetExternalShareSettledAsyncTogglesIt()
+    {
+        await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Bon 1",
+            ExpenseDate = new DateOnly(2026, 1, 1),
+            TotalCents = 1000,
+            Items = [new ExpenseItemInput { Description = "Voor Jan", TotalCents = 1000, ExternalRecipientName = "Jan" }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 1000 }],
+        });
+        await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Bon 2",
+            ExpenseDate = new DateOnly(2026, 1, 2),
+            TotalCents = 500,
+            Items = [new ExpenseItemInput { Description = "Ook voor Jan", TotalCents = 500, ExternalRecipientName = "Jan" }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 500 }],
+        });
+
+        var shares = await _service.GetExternalSharesAsync();
+        Assert.Equal(2, shares.Count);
+        Assert.All(shares, s => Assert.Equal("Jan", s.RecipientName));
+        Assert.All(shares, s => Assert.False(s.IsSettled));
+
+        var firstShare = shares.Single(s => s.ItemDescription == "Voor Jan");
+        await _service.SetExternalShareSettledAsync(firstShare.ExpenseItemId, true);
+
+        shares = await _service.GetExternalSharesAsync();
+        var settled = shares.Single(s => s.ExpenseItemId == firstShare.ExpenseItemId);
+        Assert.True(settled.IsSettled);
+        Assert.NotNull(settled.SettledAt);
+
+        var stillOpen = shares.Single(s => s.ItemDescription == "Ook voor Jan");
+        Assert.False(stillOpen.IsSettled);
+    }
+
+    [Fact]
     public async Task CreateManualExpenseAsync_DoesNotNotifyAnyone()
     {
         await _service.CreateManualExpenseAsync(new ManualExpenseRequest

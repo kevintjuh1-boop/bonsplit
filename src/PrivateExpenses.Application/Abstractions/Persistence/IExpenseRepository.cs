@@ -30,6 +30,13 @@ public interface IExpenseRepository
     /// one query rather than one per expense.</summary>
     Task<List<Expense>> GetForExportAsync(ExpenseFilter filter, CancellationToken cancellationToken = default);
 
+    /// <summary>Every receipt line marked as belonging to someone outside the tracked household,
+    /// across all non-deleted expenses — the raw feed for the Extern page.</summary>
+    Task<List<ExternalShareDto>> GetExternalSharesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>A single tracked item by id, for toggling its external-settled status.</summary>
+    Task<ExpenseItem?> GetItemByIdAsync(Guid itemId, CancellationToken cancellationToken = default);
+
     Task AddAsync(Expense expense, CancellationToken cancellationToken = default);
 
     void Update(Expense expense);

@@ -17,6 +17,11 @@ public sealed class ExpenseItemInput
     /// <summary>Explicit per-person amounts (already converted from a custom split or percentages).
     /// When set, this overrides the equal split and must sum exactly to <see cref="TotalCents"/>.</summary>
     public IReadOnlyDictionary<Guid, long>? CustomShareCents { get; init; }
+
+    /// <summary>When set, this whole line is for someone outside the tracked household — it gets no
+    /// shares at all and instead becomes an open entry on the Extern page. Mutually exclusive with
+    /// <see cref="ParticipantPersonIdsInOrder"/> and <see cref="CustomShareCents"/>.</summary>
+    public string? ExternalRecipientName { get; init; }
 }
 
 public sealed class ExpensePaymentInput

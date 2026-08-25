@@ -168,6 +168,41 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
         await uow.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task UpdateCategoryAsync(Guid expenseId, Guid? categoryId, CancellationToken cancellationToken = default)
+    {
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        var expense = await uow.Expenses.GetByIdWithDetailsAsync(expenseId, cancellationToken)
+            ?? throw new ExpenseValidationException("De uitgave die je probeert te wijzigen bestaat niet (meer).");
+
+        expense.CategoryId = categoryId;
+        expense.UpdatedAt = DateTime.UtcNow;
+
+        uow.Expenses.Update(expense);
+        await uow.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<List<ExternalShareDto>> GetExternalSharesAsync(CancellationToken cancellationToken = default)
+    {
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        return await uow.Expenses.GetExternalSharesAsync(cancellationToken);
+    }
+
+    public async Task SetExternalShareSettledAsync(Guid expenseItemId, bool isSettled, CancellationToken cancellationToken = default)
+    {
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        var item = await uow.Expenses.GetItemByIdAsync(expenseItemId, cancellationToken)
+            ?? throw new ExpenseValidationException("Deze regel bestaat niet (meer).");
+
+        if (item.ExternalRecipientName is null)
+        {
+            throw new ExpenseValidationException("Deze regel is niet extern.");
+        }
+
+        item.IsExternalSettled = isSettled;
+        item.ExternalSettledAt = isSettled ? DateTime.UtcNow : null;
+        await uow.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task SoftDeleteAsync(Guid expenseId, CancellationToken cancellationToken = default)
     {
         await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
@@ -242,6 +277,34 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
                 throw new ExpenseValidationException("Elke regel moet een omschrijving hebben.");
             }
 
+            var externalRecipientName = string.IsNullOrWhiteSpace(input.ExternalRecipientName) ? null : input.ExternalRecipientName.Trim();
+
+            var item = new ExpenseItem
+            {
+                Id = Guid.NewGuid(),
+                Description = input.Description.Trim(),
+                Quantity = input.Quantity,
+                UnitPriceCents = input.UnitPriceCents,
+                TotalCents = input.TotalCents,
+                SortOrder = sortOrder++,
+                IsDiscount = input.IsDiscount,
+                IsDeposit = input.IsDeposit,
+                PromotionLabel = string.IsNullOrWhiteSpace(input.PromotionLabel) ? null : input.PromotionLabel.Trim(),
+                ExternalRecipientName = externalRecipientName,
+                CreatedAt = DateTime.UtcNow,
+            };
+
+            if (externalRecipientName is not null)
+            {
+                if (input.ParticipantPersonIdsInOrder.Count > 0 || input.CustomShareCents is { Count: > 0 })
+                {
+                    throw new ExpenseValidationException($"Regel '{input.Description}' kan niet zowel extern als verdeeld onder de groep zijn.");
+                }
+
+                items.Add(item);
+                continue;
+            }
+
             IReadOnlyDictionary<Guid, long> shares;
             if (input.CustomShareCents is { Count: > 0 } custom)
             {
@@ -265,20 +328,6 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
                     throw new ExpenseValidationException("Eén van de toegewezen personen bestaat niet (meer).");
                 }
             }
-
-            var item = new ExpenseItem
-            {
-                Id = Guid.NewGuid(),
-                Description = input.Description.Trim(),
-                Quantity = input.Quantity,
-                UnitPriceCents = input.UnitPriceCents,
-                TotalCents = input.TotalCents,
-                SortOrder = sortOrder++,
-                IsDiscount = input.IsDiscount,
-                IsDeposit = input.IsDeposit,
-                PromotionLabel = string.IsNullOrWhiteSpace(input.PromotionLabel) ? null : input.PromotionLabel.Trim(),
-                CreatedAt = DateTime.UtcNow,
-            };
 
             foreach (var (personId, amount) in shares)
             {
@@ -313,7 +362,8 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
             .OrderBy(i => i.SortOrder)
             .Select(i => new ExpenseItemDto(
                 i.Id, i.Description, i.Quantity, i.UnitPriceCents, i.TotalCents, i.IsDiscount, i.IsDeposit, i.PromotionLabel, i.SortOrder,
-                i.Shares.Select(s => new ExpenseItemShareDto(s.PersonId, s.Person!.Name, s.Person.Initial, s.Person.ColorKey, s.AmountCents)).ToList()))
+                i.Shares.Select(s => new ExpenseItemShareDto(s.PersonId, s.Person!.Name, s.Person.Initial, s.Person.ColorKey, s.AmountCents)).ToList(),
+                i.ExternalRecipientName, i.IsExternalSettled))
             .ToList();
 
         var payments = expense.Payments

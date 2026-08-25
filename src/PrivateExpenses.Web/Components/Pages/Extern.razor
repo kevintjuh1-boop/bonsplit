@@ -1,0 +1,81 @@
+@page "/extern"
+@inject IExpenseService ExpenseService
+
+<PageTitle>Extern</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Extern</h1>
+        <p class="page-subtitle">Bedragen voor mensen buiten Kevin, Wesley en Jos — los van de saldi</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_groups.Count == 0)
+{
+    <div class="card">
+        <EmptyState IconName="wallet" Title="Nog geen externe bedragen" Description="Wijs bij het verdelen van een bon een regel toe aan 'Extern' om 'm hier terug te zien." />
+    </div>
+}
+else
+{
+    @foreach (var group in _groups)
+    {
+        <div class="card card-padded" style="margin-bottom:16px;">
+            <div class="card-header">
+                <span class="card-title">@group.RecipientName</span>
+                <span class="text-sm" style="font-weight:800;color:@(group.OpenCents > 0 ? "var(--color-danger-text)" : "var(--color-text-muted)");">
+                    @MoneyFormatter.Format(group.OpenCents) openstaand
+                </span>
+            </div>
+            <div class="stack" style="gap:0;">
+                @foreach (var share in group.Shares)
+                {
+                    <div class="list-row">
+                        <input type="checkbox" checked="@share.IsSettled" @onchange="e => ToggleSettledAsync(share, (bool)e.Value!)" />
+                        <span class="list-row-main">
+                            <span class="list-row-title @(share.IsSettled ? "text-muted" : "")" style="@(share.IsSettled ? "text-decoration:line-through;" : "")">@share.ItemDescription</span>
+                            <span class="list-row-subtitle">@share.MerchantName · @share.ExpenseDate.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture)</span>
+                        </span>
+                        <span class="list-row-amount @(share.IsSettled ? "text-muted" : "")">@MoneyFormatter.Format(share.AmountCents)</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private List<RecipientGroup> _groups = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+        _loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        var shares = await ExpenseService.GetExternalSharesAsync();
+        _groups = shares
+            .GroupBy(s => s.RecipientName)
+            .Select(g => new RecipientGroup(
+                g.Key,
+                g.OrderByDescending(s => s.ExpenseDate).ToList(),
+                g.Where(s => !s.IsSettled).Sum(s => s.AmountCents)))
+            .OrderByDescending(g => g.OpenCents)
+            .ToList();
+    }
+
+    private async Task ToggleSettledAsync(ExternalShareDto share, bool settled)
+    {
+        await ExpenseService.SetExternalShareSettledAsync(share.ExpenseItemId, settled);
+        await ReloadAsync();
+    }
+
+    private sealed record RecipientGroup(string RecipientName, List<ExternalShareDto> Shares, long OpenCents);
+}

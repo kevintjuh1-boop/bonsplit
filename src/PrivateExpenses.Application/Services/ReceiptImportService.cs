@@ -146,6 +146,21 @@ public class ReceiptImportService(
         return new ReceiptFileContent(stream, document.MimeType, document.OriginalFileName);
     }
 
+    public async Task<List<PendingReceiptDto>> GetPendingReviewAsync(CancellationToken cancellationToken = default)
+    {
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        var documents = await uow.ReceiptDocuments.GetPendingReviewAsync(cancellationToken);
+
+        return documents.Select(d =>
+        {
+            var parsed = d.RawStructuredResult is null
+                ? null
+                : JsonSerializer.Deserialize<ReceiptParseResult>(d.RawStructuredResult, JsonOptions);
+
+            return new PendingReceiptDto(d.Id, parsed?.MerchantName, parsed?.Date, parsed?.TotalCents, d.UploadedAt);
+        }).ToList();
+    }
+
     private static async Task<int> ReadHeaderAsync(Stream stream, byte[] buffer, CancellationToken cancellationToken)
     {
         var totalRead = 0;

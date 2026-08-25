@@ -13,5 +13,9 @@ public interface IExpenseService
     Task<Guid> CreateAsync(CreateExpenseRequest request, CancellationToken cancellationToken = default);
     Task<Guid> CreateManualExpenseAsync(ManualExpenseRequest request, CancellationToken cancellationToken = default);
     Task UpdateAsync(Guid expenseId, CreateExpenseRequest request, CancellationToken cancellationToken = default);
+    Task UpdateCategoryAsync(Guid expenseId, Guid? categoryId, CancellationToken cancellationToken = default);
     Task SoftDeleteAsync(Guid expenseId, CancellationToken cancellationToken = default);
+
+    Task<List<ExternalShareDto>> GetExternalSharesAsync(CancellationToken cancellationToken = default);
+    Task SetExternalShareSettledAsync(Guid expenseItemId, bool isSettled, CancellationToken cancellationToken = default);
 }

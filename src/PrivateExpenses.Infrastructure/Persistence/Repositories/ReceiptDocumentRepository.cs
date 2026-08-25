@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PrivateExpenses.Application.Abstractions.Persistence;
 using PrivateExpenses.Domain.Entities;
+using PrivateExpenses.Domain.Enums;
 
 namespace PrivateExpenses.Infrastructure.Persistence.Repositories;
 
@@ -32,6 +33,12 @@ public class ReceiptDocumentRepository(PrivateExpensesDbContext context) : IRece
                 && d.Expense.TotalCents == totalCents)
             .ToListAsync(cancellationToken);
     }
+
+    public Task<List<ReceiptDocument>> GetPendingReviewAsync(CancellationToken cancellationToken = default) =>
+        context.ReceiptDocuments.AsNoTracking()
+            .Where(d => d.ExpenseId == null && (d.ParsingStatus == ParsingStatus.NeedsReview || d.ParsingStatus == ParsingStatus.Failed))
+            .OrderByDescending(d => d.UploadedAt)
+            .ToListAsync(cancellationToken);
 
     public async Task AddAsync(ReceiptDocument document, CancellationToken cancellationToken = default) =>
         await context.ReceiptDocuments.AddAsync(document, cancellationToken);

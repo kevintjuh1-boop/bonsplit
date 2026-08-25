@@ -14,6 +14,10 @@ public interface IReceiptDocumentRepository
     Task<List<ReceiptDocument>> FindPossibleDuplicatesAsync(
         string? merchantName, DateOnly? expenseDate, long? totalCents, CancellationToken cancellationToken = default);
 
+    /// <summary>Documents that were scanned/parsed but never turned into a saved expense — a receipt
+    /// still worth reviewing rather than a lost upload.</summary>
+    Task<List<ReceiptDocument>> GetPendingReviewAsync(CancellationToken cancellationToken = default);
+
     Task AddAsync(ReceiptDocument document, CancellationToken cancellationToken = default);
 
     void Update(ReceiptDocument document);

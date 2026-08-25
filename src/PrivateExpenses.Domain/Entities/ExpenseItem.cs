@@ -20,6 +20,13 @@ public class ExpenseItem
     /// the specific promotion type wasn't identifiable.</summary>
     public string? PromotionLabel { get; set; }
 
+    /// <summary>Set when this whole line is for someone outside the tracked household (e.g. a friend's
+    /// share of the receipt) rather than being split between <see cref="Shares"/>. Mutually exclusive
+    /// with having any shares — tracked separately on the Extern page instead of the 3-person saldi.</summary>
+    public string? ExternalRecipientName { get; set; }
+    public bool IsExternalSettled { get; set; }
+    public DateTime? ExternalSettledAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public ICollection<ExpenseItemShare> Shares { get; set; } = new List<ExpenseItemShare>();

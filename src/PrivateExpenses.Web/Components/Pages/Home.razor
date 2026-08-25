@@ -3,6 +3,7 @@
 @inject IPersonService PersonService
 @inject IExpenseService ExpenseService
 @inject IBalanceService BalanceService
+@inject IReceiptImportService ReceiptImportService
 @inject ViewAsState ViewAs
 @inject NavigationManager Navigation
 
@@ -43,6 +44,33 @@ else
             </div>
         </div>
     </div>
+
+    @if (_pendingReceipts.Count > 0)
+    {
+        <div class="card card-padded" style="margin-bottom:20px;">
+            <div class="card-header"><span class="card-title">Concepten</span></div>
+            <p class="text-sm text-muted" style="margin-top:-4px;margin-bottom:8px;">Gescand maar nog niet verdeeld — ga verder waar je gebleven was.</p>
+            <div class="stack" style="gap:0;">
+                @foreach (var pending in _pendingReceipts)
+                {
+                    <a href="@($"/bon/{pending.DocumentId}/beoordelen")" class="list-row">
+                        <span class="list-row-icon"><Icon Name="receipt" Size="18" /></span>
+                        <span class="list-row-main">
+                            <span class="list-row-title">@(pending.MerchantName ?? "Onbekende winkel")</span>
+                            <span class="list-row-subtitle">
+                                @(pending.Date?.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture) ?? pending.UploadedAt.ToString("d MMMM yyyy", MoneyFormatter.DutchCulture))
+                            </span>
+                        </span>
+                        @if (pending.TotalCents is { } totalCents)
+                        {
+                            <span class="list-row-amount">@MoneyFormatter.Format(totalCents)</span>
+                        }
+                        <Icon Name="chevron-right" Size="18" />
+                    </a>
+                }
+            </div>
+        </div>
+    }
 
     @if (!_hasAnyExpenses)
     {
@@ -168,6 +196,7 @@ else
     private List<Person> _people = [];
     private List<ExpenseListItemDto> _recentExpenses = [];
     private List<SuggestedDebtDto> _suggestedDebts = [];
+    private List<PendingReceiptDto> _pendingReceipts = [];
     private PersonBalanceDto? _selectedBalance;
     private long _monthTotalCents;
     private long _monthSavingsCents;
@@ -201,6 +230,7 @@ else
         _recentExpenses = await ExpenseService.GetRecentAsync(6);
         _hasAnyExpenses = _recentExpenses.Count > 0;
         _suggestedDebts = await BalanceService.GetSuggestedDebtsAsync();
+        _pendingReceipts = await ReceiptImportService.GetPendingReviewAsync();
 
         if (ViewAs.CurrentPersonId is { } personId)
         {

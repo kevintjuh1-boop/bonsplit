@@ -90,6 +90,18 @@ public class ExpenseRepository(PrivateExpensesDbContext context) : IExpenseRepos
         return await query.ToListAsync(cancellationToken);
     }
 
+    public Task<List<ExternalShareDto>> GetExternalSharesAsync(CancellationToken cancellationToken = default) =>
+        context.ExpenseItems.AsNoTracking()
+            .Where(i => i.ExternalRecipientName != null && !i.Expense!.IsDeleted)
+            .OrderByDescending(i => i.Expense!.ExpenseDate).ThenByDescending(i => i.CreatedAt)
+            .Select(i => new ExternalShareDto(
+                i.Id, i.ExpenseId, i.ExternalRecipientName!, i.Description,
+                i.Expense!.MerchantName, i.Expense.ExpenseDate, i.TotalCents, i.IsExternalSettled, i.ExternalSettledAt))
+            .ToListAsync(cancellationToken);
+
+    public Task<ExpenseItem?> GetItemByIdAsync(Guid itemId, CancellationToken cancellationToken = default) =>
+        context.ExpenseItems.FirstOrDefaultAsync(i => i.Id == itemId, cancellationToken);
+
     public async Task AddAsync(Expense expense, CancellationToken cancellationToken = default) =>
         await context.Expenses.AddAsync(expense, cancellationToken);
 

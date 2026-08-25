@@ -22,4 +22,6 @@ public interface IReceiptImportService
         string merchantName, DateOnly date, long totalCents, CancellationToken cancellationToken = default);
 
     Task<ReceiptFileContent?> OpenFileAsync(Guid documentId, CancellationToken cancellationToken = default);
+
+    Task<List<PendingReceiptDto>> GetPendingReviewAsync(CancellationToken cancellationToken = default);
 }

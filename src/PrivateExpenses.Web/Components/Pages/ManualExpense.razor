@@ -83,9 +83,27 @@ else
             </div>
 
             <div class="field">
-                <span class="field-label">Voor wie *</span>
-                <PersonMultiSelect People="_people" SelectedIds="_participantIds" SelectedIdsChanged="ids => _participantIds = ids" />
+                <label class="text-sm" style="display:flex;align-items:center;gap:6px;">
+                    <input type="checkbox" checked="@(_externalRecipientName is not null)" @onchange="ToggleExternal" />
+                    Dit is voor iemand buiten de groep
+                </label>
             </div>
+
+            @if (_externalRecipientName is not null)
+            {
+                <div class="field">
+                    <label class="field-label" for="externalName">Naam</label>
+                    <input id="externalName" class="input" placeholder="Naam" @bind="_externalRecipientName" @bind:event="oninput" />
+                    <span class="field-hint">Komt niet in de saldi van ons 3 — terug te vinden op de Extern-pagina.</span>
+                </div>
+            }
+            else
+            {
+                <div class="field">
+                    <span class="field-label">Voor wie *</span>
+                    <PersonMultiSelect People="_people" SelectedIds="_participantIds" SelectedIdsChanged="ids => _participantIds = ids" />
+                </div>
+            }
 
             <div class="field">
                 <label class="field-label" for="notes">Notitie (optioneel)</label>
@@ -118,6 +136,7 @@ else
     private Guid? _categoryId;
     private Guid? _payerId;
     private HashSet<Guid> _participantIds = [];
+    private string? _externalRecipientName;
     private string _notes = "";
 
     protected override async Task OnInitializedAsync()
@@ -138,11 +157,22 @@ else
                 _categoryId = existing.CategoryId;
                 _payerId = existing.Payments.FirstOrDefault()?.PersonId;
                 _participantIds = item.Shares.Select(s => s.PersonId).ToHashSet();
+                _externalRecipientName = item.ExternalRecipientName;
                 _notes = existing.Notes ?? "";
             }
         }
 
         _loading = false;
+    }
+
+    private void ToggleExternal(ChangeEventArgs e)
+    {
+        var isExternal = e.Value is true;
+        _externalRecipientName = isExternal ? "" : null;
+        if (isExternal)
+        {
+            _participantIds.Clear();
+        }
     }
 
     private async Task SaveAsync()
@@ -168,7 +198,15 @@ else
             return;
         }
 
-        if (_participantIds.Count == 0)
+        if (_externalRecipientName is not null)
+        {
+            if (string.IsNullOrWhiteSpace(_externalRecipientName))
+            {
+                _errorMessage = "Vul een naam in voor wie deze uitgave is.";
+                return;
+            }
+        }
+        else if (_participantIds.Count == 0)
         {
             _errorMessage = "Kies voor wie deze uitgave is.";
             return;
@@ -194,7 +232,8 @@ else
                     {
                         Description = _description.Trim(),
                         TotalCents = amountCents.Value,
-                        ParticipantPersonIdsInOrder = participantOrder,
+                        ParticipantPersonIdsInOrder = _externalRecipientName is null ? participantOrder : [],
+                        ExternalRecipientName = _externalRecipientName,
                     }
                 ],
             };

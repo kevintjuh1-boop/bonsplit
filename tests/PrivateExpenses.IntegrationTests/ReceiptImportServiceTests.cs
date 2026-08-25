@@ -125,6 +125,35 @@ public class ReceiptImportServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetPendingReviewAsync_IncludesAScannedButUnfinishedReceipt_ThenDropsItOnceLinkedToAnExpense()
+    {
+        var service = CreateService(fixtureParser: true);
+        var bytes = BuildFakeJpegBytes("pending-review");
+        using var stream = new MemoryStream(bytes);
+        var upload = await service.UploadAsync(stream, "bon.jpg", "image/jpeg", bytes.Length);
+        await service.ParseAsync(upload.DocumentId);
+
+        var pending = await service.GetPendingReviewAsync();
+        var draft = Assert.Single(pending, p => p.DocumentId == upload.DocumentId);
+        Assert.Equal("Jumbo (voorbeeldbon)", draft.MerchantName);
+
+        var expenseService = new ExpenseService(_db.UnitOfWorkFactory);
+        var people = await _db.GetPeopleAsync();
+        var kevin = people.Single(p => p.Name == "Kevin");
+        await expenseService.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = draft.MerchantName!,
+            ExpenseDate = draft.Date ?? DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = draft.TotalCents ?? 0,
+            ReceiptDocumentId = upload.DocumentId,
+            Items = [new ExpenseItemInput { Description = "Item", TotalCents = draft.TotalCents ?? 0, ParticipantPersonIdsInOrder = [kevin.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = kevin.Id, AmountCents = draft.TotalCents ?? 0 }],
+        });
+
+        Assert.DoesNotContain(await service.GetPendingReviewAsync(), p => p.DocumentId == upload.DocumentId);
+    }
+
+    [Fact]
     public async Task ParseAsync_WithDevelopmentParser_FailsCleanlyAndSetsFailedStatus()
     {
         var service = CreateService(fixtureParser: false);

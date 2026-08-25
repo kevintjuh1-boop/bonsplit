@@ -219,7 +219,16 @@ else
                                     </button>
                                 </div>
 
-                                @if (!item.CustomSplitEnabled)
+                                @if (item.ExternalRecipientName is not null)
+                                {
+                                    <div class="stack" style="gap:6px;margin-top:8px;padding:10px;background:var(--color-surface-muted);border-radius:var(--radius-sm);">
+                                        <label class="text-sm text-muted">Voor wie (buiten de groep)?</label>
+                                        <input class="input" placeholder="Naam" @bind="item.ExternalRecipientName" @bind:event="oninput" />
+                                        <span class="text-sm text-muted">Komt niet in de saldi van ons 3 — terug te vinden op de Extern-pagina.</span>
+                                        <button type="button" class="btn btn-ghost btn-sm" style="align-self:flex-start;" @onclick="() => DisableExternal(item)">Terug naar verdelen</button>
+                                    </div>
+                                }
+                                else if (!item.CustomSplitEnabled)
                                 {
                                     <div class="person-row" style="flex-wrap:wrap;margin-top:8px;">
                                         <button type="button" class="pill-filter @(item.ParticipantIds.Count == _people.Count ? "active" : "")" @onclick="() => ToggleEveryone(item)">
@@ -236,6 +245,7 @@ else
                                             </button>
                                         }
                                         <button type="button" class="btn btn-ghost btn-sm" @onclick="() => EnableCustomSplit(item)">Aangepast verdelen</button>
+                                        <button type="button" class="btn btn-ghost btn-sm" @onclick="() => EnableExternal(item)">Extern</button>
                                     </div>
                                 }
                                 else
@@ -482,6 +492,7 @@ else
         foreach (var item in _items)
         {
             item.CustomSplitEnabled = false;
+            item.ExternalRecipientName = null;
             item.ParticipantIds = new HashSet<Guid>(everyone);
         }
     }
@@ -492,10 +503,21 @@ else
         foreach (var item in _items.Where(i => i.Selected))
         {
             item.CustomSplitEnabled = false;
+            item.ExternalRecipientName = null;
             item.ParticipantIds = new HashSet<Guid>(targetIds);
             item.Selected = false;
         }
     }
+
+    private void EnableExternal(ReviewItem item)
+    {
+        item.ParticipantIds.Clear();
+        item.CustomSplitEnabled = false;
+        item.CustomAmountText.Clear();
+        item.ExternalRecipientName = "";
+    }
+
+    private void DisableExternal(ReviewItem item) => item.ExternalRecipientName = null;
 
     private void ClearSelection()
     {
@@ -604,6 +626,7 @@ else
                     PromotionLabel = i.PromotionLabel,
                     ParticipantPersonIdsInOrder = _people.Where(p => i.ParticipantIds.Contains(p.Id)).Select(p => p.Id).ToList(),
                     CustomShareCents = i.CustomSplitEnabled ? i.BuildCustomShareCents() : null,
+                    ExternalRecipientName = string.IsNullOrWhiteSpace(i.ExternalRecipientName) ? null : i.ExternalRecipientName.Trim(),
                 }).ToList(),
                 Payments = [new ExpensePaymentInput { PersonId = _payerId.Value, AmountCents = TotalCentsValue }],
             };
@@ -641,9 +664,13 @@ else
         public bool CustomSplitEnabled { get; set; }
         public Dictionary<Guid, string> CustomAmountText { get; set; } = [];
 
-        public bool IsAssigned => CustomSplitEnabled
+        /// <summary>Null when this line is split among the group as usual; otherwise the whole line is
+        /// for someone outside the group, tracked separately (never both at once).</summary>
+        public string? ExternalRecipientName { get; set; }
+
+        public bool IsAssigned => !string.IsNullOrWhiteSpace(ExternalRecipientName) || (CustomSplitEnabled
             ? CustomAmountText.Values.Any(t => (MoneyParsing.ParseToCents(t) ?? 0) != 0)
-            : ParticipantIds.Count > 0;
+            : ParticipantIds.Count > 0);
 
         public long CustomSplitSumCents => CustomAmountText.Values.Sum(t => MoneyParsing.ParseToCents(t) ?? 0);
 

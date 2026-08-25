@@ -1,6 +1,7 @@
 @page "/uitgaven/{Id:guid}"
 @using PrivateExpenses.Application.Exceptions
 @inject IExpenseService ExpenseService
+@inject ICategoryService CategoryService
 @inject NavigationManager Navigation
 
 <PageTitle>Uitgave</PageTitle>
@@ -57,9 +58,15 @@ else
                     <span class="text-muted text-sm">Totaal</span>
                     <span style="font-weight:800;">@MoneyFormatter.Format(_expense.TotalCents)</span>
                 </div>
-                <div style="display:flex;justify-content:space-between;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
                     <span class="text-muted text-sm">Categorie</span>
-                    <span class="text-sm">@(_expense.CategoryName ?? "Geen categorie")</span>
+                    <select class="select" style="width:auto;" value="@(_expense.CategoryId?.ToString() ?? "")" @onchange="OnCategoryChangedAsync">
+                        <option value="">Geen categorie</option>
+                        @foreach (var category in _categories)
+                        {
+                            <option value="@category.Id">@category.Name</option>
+                        }
+                    </select>
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <span class="text-muted text-sm">Betaald door</span>
@@ -145,6 +152,7 @@ else
     [Parameter] public Guid Id { get; set; }
 
     private ExpenseDetailDto? _expense;
+    private List<Category> _categories = [];
     private bool _loading = true;
     private bool _showDeleteConfirm;
 
@@ -154,7 +162,20 @@ else
     {
         _loading = true;
         _expense = await ExpenseService.GetDetailAsync(Id);
+        _categories = await CategoryService.GetAllAsync();
         _loading = false;
+    }
+
+    private async Task OnCategoryChangedAsync(ChangeEventArgs e)
+    {
+        if (_expense is null)
+        {
+            return;
+        }
+
+        var categoryId = Guid.TryParse(e.Value?.ToString(), out var parsed) ? parsed : (Guid?)null;
+        await ExpenseService.UpdateCategoryAsync(_expense.Id, categoryId);
+        _expense = await ExpenseService.GetDetailAsync(Id);
     }
 
     private async Task DeleteAsync()

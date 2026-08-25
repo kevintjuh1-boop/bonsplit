@@ -14,6 +14,7 @@ public class ExpenseItemConfiguration : IEntityTypeConfiguration<ExpenseItem>
 
         builder.Property(i => i.Description).IsRequired().HasMaxLength(300);
         builder.Property(i => i.PromotionLabel).HasMaxLength(80);
+        builder.Property(i => i.ExternalRecipientName).HasMaxLength(100);
         builder.Property(i => i.Quantity).HasPrecision(10, 3);
         builder.Property(i => i.CreatedAt).IsRequired();
 
