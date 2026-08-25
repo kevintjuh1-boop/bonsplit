@@ -51,10 +51,21 @@ public class ExpenseRepository(PrivateExpensesDbContext context) : IExpenseRepos
 
     public async Task<Dictionary<Guid, long>> GetTotalPaidPerPersonAsync(CancellationToken cancellationToken = default)
     {
+        // Money that went toward an external-recipient item was never the group's to begin with (it
+        // gets no shares at all), so it must not inflate what the payer is owed by the other two —
+        // otherwise the group's net balances stop summing to zero. Each payment's counted amount is
+        // scaled down by the external share of that expense's total, proportional to what was paid.
         return await context.ExpensePayments
             .Where(p => !p.Expense!.IsDeleted)
-            .GroupBy(p => p.PersonId)
-            .Select(g => new { PersonId = g.Key, Total = g.Sum(p => p.AmountCents) })
+            .Select(p => new
+            {
+                p.PersonId,
+                GroupAmount = p.AmountCents
+                    - (p.Expense!.Items.Where(i => i.ExternalRecipientName != null).Sum(i => (long?)i.TotalCents) ?? 0)
+                      * p.AmountCents / p.Expense.TotalCents,
+            })
+            .GroupBy(x => x.PersonId)
+            .Select(g => new { PersonId = g.Key, Total = g.Sum(x => x.GroupAmount) })
             .ToDictionaryAsync(x => x.PersonId, x => x.Total, cancellationToken);
     }
 

@@ -117,6 +117,60 @@ public class BalanceAndSettlementTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetSuggestedDebtsAsync_ExpenseWithAnExternalRecipientItem_StillSumsToZero()
+    {
+        // Regression test: an external-recipient item gets no shares, so it must not be counted as
+        // money the payer "paid" toward the group either — otherwise the group's net balances stop
+        // summing to zero and DebtSimplifier.Simplify throws. Kevin pays €30 total for a €20 pizza
+        // shared with Wesley and a €10 pizza that's entirely for an outside friend, Jan.
+        await _expenseService.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Pizzeria",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = 3000,
+            Items =
+            [
+                new ExpenseItemInput { Description = "Onze pizza's", TotalCents = 2000, ParticipantPersonIdsInOrder = [_kevin.Id, _wesley.Id] },
+                new ExpenseItemInput { Description = "Pizza van Jan", TotalCents = 1000, ExternalRecipientName = "Jan" },
+            ],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 3000 }],
+        });
+
+        // Must not throw "Saldi moeten optellen tot 0" — this line is the actual regression check.
+        var debts = await _balanceService.GetSuggestedDebtsAsync();
+
+        var balances = await _balanceService.GetPersonBalancesAsync();
+        Assert.Equal(0, balances.Sum(b => b.NetBalanceCents));
+
+        // Kevin fronted €30 but only €20 was ever the group's — he's owed exactly €10 by Wesley for
+        // the shared pizza, same as if the external line had never been on the receipt at all.
+        var kevinWesleyDebt = Assert.Single(debts);
+        Assert.Equal(_wesley.Id, kevinWesleyDebt.FromPersonId);
+        Assert.Equal(_kevin.Id, kevinWesleyDebt.ToPersonId);
+        Assert.Equal(1000, kevinWesleyDebt.AmountCents);
+    }
+
+    [Fact]
+    public async Task GetPersonBalancesAsync_ExpenseThatIsEntirelyForAnExternalRecipient_CountsNoneOfItAsPaid()
+    {
+        // If the whole expense is external, none of it should show up as "paid" for the payer either —
+        // it's entirely outside the group's accounting, so their paidCents for it must be exactly zero.
+        await _expenseService.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Cadeau voor Sanne",
+            ExpenseDate = DateOnly.FromDateTime(DateTime.Today),
+            TotalCents = 1500,
+            Items = [new ExpenseItemInput { Description = "Cadeau", TotalCents = 1500, ExternalRecipientName = "Sanne" }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 1500 }],
+        });
+
+        var balances = await _balanceService.GetPersonBalancesAsync();
+        Assert.Equal(0, balances.Sum(b => b.NetBalanceCents));
+        Assert.DoesNotContain(balances, b => b.PersonId == _kevin.Id && b.TotalPaidCents != 0);
+        Assert.Empty(await _balanceService.GetSuggestedDebtsAsync());
+    }
+
+    [Fact]
     public async Task CreateAsync_DepositOnlyRefundSharedAmongThree_TheReceiverOwesTheOthersTheirShare()
     {
         // Kevin returns €4,50 of empties that belonged to all three of them equally (€1,50 each). He's
