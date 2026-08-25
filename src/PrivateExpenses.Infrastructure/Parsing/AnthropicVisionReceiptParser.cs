@@ -6,6 +6,9 @@ using Microsoft.Extensions.Logging;
 using PrivateExpenses.Application.Abstractions.Parsing;
 using PrivateExpenses.Application.Dtos.Receipts;
 using PrivateExpenses.Infrastructure.Persistence.Seed;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
 
 namespace PrivateExpenses.Infrastructure.Parsing;
 
@@ -120,11 +123,21 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
         {
             await using var buffered = new MemoryStream();
             await request.FileContent.CopyToAsync(buffered, timeoutCts.Token);
-            var base64Data = Convert.ToBase64String(buffered.ToArray());
+
+            var mediaType = request.MimeType;
+            string base64Data;
+            if (request.MimeType == "application/pdf")
+            {
+                base64Data = Convert.ToBase64String(buffered.ToArray());
+            }
+            else
+            {
+                (base64Data, mediaType) = await PrepareImageForUploadAsync(buffered, request.MimeType, timeoutCts.Token);
+            }
 
             ContentBlockParam documentBlock = request.MimeType == "application/pdf"
                 ? new DocumentBlockParam { Source = new Base64PdfSource { Data = base64Data } }
-                : new ImageBlockParam { Source = new Base64ImageSource { Data = base64Data, MediaType = request.MimeType } };
+                : new ImageBlockParam { Source = new Base64ImageSource { Data = base64Data, MediaType = mediaType } };
 
             var parameters = new MessageCreateParams
             {
@@ -219,6 +232,47 @@ public class AnthropicVisionReceiptParser(AnthropicClient client, string modelId
             // log the technical detail server-side and return a friendly, generic failure instead.
             logger.LogError(ex, "Receipt parsing via Anthropic failed.");
             return ReceiptParseResult.Failed("Bon kon niet automatisch worden uitgelezen door een fout bij de AI-provider.");
+        }
+    }
+
+    /// <summary>Anthropic hard-rejects any image over 8000px in either dimension — a real failure mode
+    /// for a full-resolution phone photo of a long till receipt. Downscales defensively to a generous
+    /// cap well under that limit before sending; an already-small photo is sent untouched. Falls back
+    /// to the original bytes on any decode error rather than blocking parsing on a resize bug.
+    /// Internal (not private) so unit tests can exercise it directly without a live API call.</summary>
+    internal async Task<(string Base64Data, string MimeType)> PrepareImageForUploadAsync(
+        MemoryStream buffered, string mimeType, CancellationToken cancellationToken)
+    {
+        const int maxDimension = 4000;
+
+        try
+        {
+            buffered.Position = 0;
+            using var image = await Image.LoadAsync(buffered, cancellationToken);
+
+            if (image.Width <= maxDimension && image.Height <= maxDimension)
+            {
+                return (Convert.ToBase64String(buffered.ToArray()), mimeType);
+            }
+
+            logger.LogInformation(
+                "Receipt image is {Width}x{Height}, downscaling to fit within {MaxDimension}px before sending.",
+                image.Width, image.Height, maxDimension);
+
+            image.Mutate(ctx => ctx.Resize(new ResizeOptions
+            {
+                Mode = ResizeMode.Max,
+                Size = new Size(maxDimension, maxDimension),
+            }));
+
+            await using var resized = new MemoryStream();
+            await image.SaveAsync(resized, new JpegEncoder { Quality = 90 }, cancellationToken);
+            return (Convert.ToBase64String(resized.ToArray()), "image/jpeg");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not decode/resize the receipt image before sending; sending it unmodified.");
+            return (Convert.ToBase64String(buffered.ToArray()), mimeType);
         }
     }
 

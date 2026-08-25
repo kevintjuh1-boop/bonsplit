@@ -1,5 +1,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using PrivateExpenses.Infrastructure.Parsing;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace PrivateExpenses.UnitTests.Parsing;
 
@@ -109,5 +112,42 @@ public class AnthropicVisionReceiptParserTests
 
         Assert.Null(result);
         Assert.NotEqual(0L, result.GetValueOrDefault(long.MinValue));
+    }
+
+    [Fact]
+    public async Task PrepareImageForUploadAsync_ImageOverAnthropicsPixelLimit_IsDownscaledToFitUnderIt()
+    {
+        // Regression test: Anthropic hard-rejects any image over 8000px in either dimension — a real
+        // failure a user hit with a full-resolution phone photo of a long Sligro receipt. 8500x100
+        // reproduces "one dimension way past the limit" cheaply (850k pixels, not a real photo's
+        // megapixel count) while still exercising the exact code path that broke.
+        using var oversized = new Image<Rgba32>(8500, 100);
+        await using var buffered = new MemoryStream();
+        await oversized.SaveAsync(buffered, new PngEncoder());
+
+        var (base64Data, mimeType) = await Parser.PrepareImageForUploadAsync(buffered, "image/png", CancellationToken.None);
+
+        Assert.Equal("image/jpeg", mimeType);
+        var resizedBytes = Convert.FromBase64String(base64Data);
+        using var resized = Image.Load(resizedBytes);
+        Assert.True(resized.Width <= 4000);
+        Assert.True(resized.Height <= 4000);
+        // Aspect ratio preserved: a 8500x100 source is 85:1, so the resized width should still
+        // dominate — this would fail if width/height ever got swapped or resized independently.
+        Assert.True(resized.Width > resized.Height * 10);
+    }
+
+    [Fact]
+    public async Task PrepareImageForUploadAsync_ImageAlreadyUnderTheLimit_IsSentUnmodified()
+    {
+        using var small = new Image<Rgba32>(800, 600);
+        await using var buffered = new MemoryStream();
+        await small.SaveAsync(buffered, new PngEncoder());
+        var originalBytes = buffered.ToArray();
+
+        var (base64Data, mimeType) = await Parser.PrepareImageForUploadAsync(buffered, "image/png", CancellationToken.None);
+
+        Assert.Equal("image/png", mimeType);
+        Assert.Equal(originalBytes, Convert.FromBase64String(base64Data));
     }
 }
