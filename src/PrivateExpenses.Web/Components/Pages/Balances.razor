@@ -139,6 +139,9 @@ else
                           style="color:@(balance.NetBalanceCents > 0 ? "var(--color-success-text)" : balance.NetBalanceCents < 0 ? "var(--color-danger-text)" : "var(--color-text-muted)");">
                         @MoneyFormatter.FormatSigned(balance.NetBalanceCents)
                     </span>
+                    <a href="@($"/eindrekening/{balance.PersonId}")" class="btn btn-secondary btn-icon" style="margin-left:8px;" title="Eindrekening bekijken">
+                        <Icon Name="receipt" Size="16" />
+                    </a>
                 </div>
             }
         </div>

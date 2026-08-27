@@ -392,6 +392,49 @@ public class ExpenseServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetPersonMonthlyStatementAsync_OnlyIncludesTheirOwnShareWithinTheMonth()
+    {
+        var thisMonth = new DateOnly(2026, 3, 10);
+        var lastMonth = new DateOnly(2026, 2, 10);
+
+        // €9 split 3 ways in March — Kevin's own portion (€3) is what should show, not the full €9.
+        await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Jumbo",
+            ExpenseDate = thisMonth,
+            TotalCents = 900,
+            Items = [new ExpenseItemInput { Description = "Boodschappen", TotalCents = 900, ParticipantPersonIdsInOrder = [_kevin.Id, _wesley.Id, _jos.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 900 }],
+        });
+
+        // A February expense must not leak into the March statement.
+        await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Vorige maand",
+            ExpenseDate = lastMonth,
+            TotalCents = 500,
+            Items = [new ExpenseItemInput { Description = "Item uit februari", TotalCents = 500, ParticipantPersonIdsInOrder = [_kevin.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 500 }],
+        });
+
+        var statement = await _service.GetPersonMonthlyStatementAsync(_kevin.Id, new DateOnly(2026, 3, 1));
+
+        Assert.NotNull(statement);
+        Assert.Equal("Kevin", statement.PersonName);
+        var line = Assert.Single(statement.Lines);
+        Assert.Equal("Boodschappen", line.Description);
+        Assert.Equal(300, line.ShareCents);
+        Assert.Equal(300, statement.TotalCents);
+    }
+
+    [Fact]
+    public async Task GetPersonMonthlyStatementAsync_UnknownPerson_ReturnsNull()
+    {
+        var statement = await _service.GetPersonMonthlyStatementAsync(Guid.NewGuid(), new DateOnly(2026, 3, 1));
+        Assert.Null(statement);
+    }
+
+    [Fact]
     public async Task CreateManualExpenseAsync_DoesNotNotifyAnyone()
     {
         await _service.CreateManualExpenseAsync(new ManualExpenseRequest

@@ -118,6 +118,18 @@ public class ExpenseRepository(PrivateExpensesDbContext context) : IExpenseRepos
                 x.Payer.PersonId, x.Payer.Person!.Name))
             .ToListAsync(cancellationToken);
 
+    public Task<List<PersonMonthlyStatementLineDto>> GetPersonStatementLinesAsync(
+        Guid personId, DateOnly rangeStart, DateOnly rangeEndExclusive, CancellationToken cancellationToken = default) =>
+        context.ExpenseItemShares.AsNoTracking()
+            .Where(s => s.PersonId == personId
+                && !s.ExpenseItem!.Expense!.IsDeleted
+                && s.ExpenseItem.Expense.ExpenseDate >= rangeStart
+                && s.ExpenseItem.Expense.ExpenseDate < rangeEndExclusive)
+            .OrderBy(s => s.ExpenseItem!.Expense!.ExpenseDate).ThenBy(s => s.ExpenseItem!.CreatedAt)
+            .Select(s => new PersonMonthlyStatementLineDto(
+                s.ExpenseItem!.Description, s.ExpenseItem.Expense!.MerchantName, s.ExpenseItem.Expense.ExpenseDate, s.AmountCents))
+            .ToListAsync(cancellationToken);
+
     public async Task AddAsync(Expense expense, CancellationToken cancellationToken = default) =>
         await context.Expenses.AddAsync(expense, cancellationToken);
 

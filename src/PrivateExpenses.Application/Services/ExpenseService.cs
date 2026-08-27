@@ -181,6 +181,22 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
         await uow.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<PersonMonthlyStatementDto?> GetPersonMonthlyStatementAsync(
+        Guid personId, DateOnly monthStart, CancellationToken cancellationToken = default)
+    {
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        var person = await uow.Persons.GetByIdAsync(personId, cancellationToken);
+        if (person is null)
+        {
+            return null;
+        }
+
+        var monthEndExclusive = monthStart.AddMonths(1);
+        var lines = await uow.Expenses.GetPersonStatementLinesAsync(personId, monthStart, monthEndExclusive, cancellationToken);
+
+        return new PersonMonthlyStatementDto(person.Id, person.Name, monthStart, lines, lines.Sum(l => l.ShareCents));
+    }
+
     public async Task<List<ExternalShareDto>> GetExternalSharesAsync(CancellationToken cancellationToken = default)
     {
         await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);

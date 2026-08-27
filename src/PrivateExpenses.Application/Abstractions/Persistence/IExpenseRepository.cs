@@ -34,6 +34,11 @@ public interface IExpenseRepository
     /// across all non-deleted expenses — the raw feed for the Extern page.</summary>
     Task<List<ExternalShareDto>> GetExternalSharesAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Every item share (a person's own portion of a line, not its full price) for one person
+    /// within a date range — the raw feed for the kassabon-style monthly eindrekening.</summary>
+    Task<List<PersonMonthlyStatementLineDto>> GetPersonStatementLinesAsync(
+        Guid personId, DateOnly rangeStart, DateOnly rangeEndExclusive, CancellationToken cancellationToken = default);
+
     Task AddAsync(Expense expense, CancellationToken cancellationToken = default);
 
     void Update(Expense expense);

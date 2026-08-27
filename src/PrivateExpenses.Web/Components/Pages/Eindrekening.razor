@@ -1,0 +1,224 @@
+@page "/eindrekening/{PersonId:guid}"
+@inject IExpenseService ExpenseService
+
+<PageTitle>Eindrekening</PageTitle>
+
+<div class="page-header">
+    <div>
+        <a href="/saldi" class="text-muted text-sm" style="display:inline-flex;align-items:center;gap:4px;margin-bottom:6px;">
+            <Icon Name="chevron-left" Size="14" /> Terug naar saldi
+        </a>
+        <h1 class="page-title">Eindrekening</h1>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_statement is null)
+{
+    <div class="card">
+        <EmptyState IconName="alert-triangle" Title="Persoon niet gevonden" Description="Deze persoon bestaat niet (meer)." />
+    </div>
+}
+else
+{
+    <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:20px;">
+        <button type="button" class="btn btn-secondary btn-icon" @onclick="PreviousMonthAsync">
+            <Icon Name="chevron-left" Size="18" />
+        </button>
+        <span style="font-weight:700;min-width:170px;text-align:center;text-transform:capitalize;">
+            @_monthStart.ToString("MMMM yyyy", MoneyFormatter.DutchCulture)
+        </span>
+        <button type="button" class="btn btn-secondary btn-icon" disabled="@_isCurrentMonth" @onclick="NextMonthAsync">
+            <Icon Name="chevron-right" Size="18" />
+        </button>
+    </div>
+
+    <div class="receipt-card">
+        <div class="receipt-header">
+            <BonSplitLogo Size="32" BackgroundColor="var(--color-navy)" />
+            <div class="receipt-store-name">BonSplit</div>
+            <div class="receipt-sub">Eindrekening voor @_statement.PersonName</div>
+        </div>
+
+        <div class="receipt-meta">
+            <div><span>Periode</span><span style="text-transform:capitalize;">@_monthStart.ToString("MMMM yyyy", MoneyFormatter.DutchCulture)</span></div>
+            <div><span>Regels</span><span>@_statement.Lines.Count</span></div>
+        </div>
+
+        <div class="receipt-divider"></div>
+
+        @if (_statement.Lines.Count == 0)
+        {
+            <p class="text-muted text-sm" style="text-align:center;padding:16px 0;">Geen producten deze maand.</p>
+        }
+        else
+        {
+            <div class="receipt-lines">
+                @foreach (var line in _statement.Lines)
+                {
+                    <div class="receipt-line">
+                        <div style="min-width:0;">
+                            <div class="receipt-line-desc">@line.Description</div>
+                            <div class="receipt-line-sub">@line.MerchantName · @line.ExpenseDate.ToString("d MMM", MoneyFormatter.DutchCulture)</div>
+                        </div>
+                        <div class="receipt-line-amount">@MoneyFormatter.Format(line.ShareCents)</div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="receipt-divider"></div>
+
+        <div class="receipt-total">
+            <span>TOTAAL</span>
+            <span>@MoneyFormatter.Format(_statement.TotalCents)</span>
+        </div>
+
+        <div class="receipt-footer">Jouw aandeel deze maand — bedankt!</div>
+    </div>
+}
+
+<style>
+    .receipt-card {
+        max-width: 420px;
+        margin: 0 auto 40px;
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: 28px 24px;
+        font-family: 'Courier New', ui-monospace, SFMono-Regular, monospace;
+        box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,.08));
+    }
+
+    .receipt-header {
+        text-align: center;
+        margin-bottom: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .receipt-store-name {
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: .5px;
+        color: var(--color-text);
+    }
+
+    .receipt-sub {
+        font-size: 13px;
+        color: var(--color-text-muted);
+    }
+
+    .receipt-meta {
+        font-size: 12px;
+        color: var(--color-text-muted);
+        margin-bottom: 4px;
+    }
+
+    .receipt-meta > div {
+        display: flex;
+        justify-content: space-between;
+        padding: 2px 0;
+    }
+
+    .receipt-divider {
+        border-top: 1px dashed var(--color-border-strong);
+        margin: 14px 0;
+    }
+
+    .receipt-lines {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .receipt-line {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        font-size: 13px;
+        color: var(--color-text);
+    }
+
+    .receipt-line-desc {
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .receipt-line-sub {
+        font-size: 11px;
+        color: var(--color-text-muted);
+        margin-top: 1px;
+    }
+
+    .receipt-line-amount {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+    .receipt-total {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 19px;
+        font-weight: 800;
+        color: var(--color-text);
+    }
+
+    .receipt-footer {
+        text-align: center;
+        font-size: 12px;
+        color: var(--color-text-muted);
+        margin-top: 18px;
+    }
+</style>
+
+@code {
+    [Parameter] public Guid PersonId { get; set; }
+
+    private bool _loading = true;
+    private PersonMonthlyStatementDto? _statement;
+    private DateOnly _monthStart;
+
+    private static DateOnly CurrentMonthStart => new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private bool _isCurrentMonth => _monthStart == CurrentMonthStart;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _monthStart = CurrentMonthStart;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _statement = await ExpenseService.GetPersonMonthlyStatementAsync(PersonId, _monthStart);
+        _loading = false;
+    }
+
+    private async Task PreviousMonthAsync()
+    {
+        _monthStart = _monthStart.AddMonths(-1);
+        await LoadAsync();
+    }
+
+    private async Task NextMonthAsync()
+    {
+        if (_isCurrentMonth)
+        {
+            return;
+        }
+
+        _monthStart = _monthStart.AddMonths(1);
+        await LoadAsync();
+    }
+}
