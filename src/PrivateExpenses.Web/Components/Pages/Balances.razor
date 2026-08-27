@@ -128,21 +128,27 @@ else
     </div>
 
     <div class="card card-padded" style="margin-bottom:20px;">
-        <div class="card-header"><span class="card-title">Overzicht per persoon</span></div>
+        <div class="card-header">
+            <div>
+                <span class="card-title">Overzicht per persoon</span>
+                <p class="text-sm text-muted" style="margin-top:2px;">Tik op iemand voor de eindrekening van die maand</p>
+            </div>
+        </div>
         <div class="stack" style="gap:0;">
             @foreach (var balance in _balances)
             {
-                <div class="list-row">
+                <a href="@($"/eindrekening/{balance.PersonId}")" class="list-row" style="text-decoration:none;color:inherit;">
                     <PersonAvatar Initial="@balance.Initial" ColorKey="@balance.ColorKey" Name="@balance.Name" Size="sm" />
-                    <span class="list-row-main list-row-title">@balance.Name</span>
+                    <span class="list-row-main">
+                        <span class="list-row-title">@balance.Name</span>
+                        <span class="list-row-subtitle">Bekijk eindrekening</span>
+                    </span>
                     <span class="list-row-amount @(balance.NetBalanceCents > 0 ? "positive" : balance.NetBalanceCents < 0 ? "negative" : "")"
                           style="color:@(balance.NetBalanceCents > 0 ? "var(--color-success-text)" : balance.NetBalanceCents < 0 ? "var(--color-danger-text)" : "var(--color-text-muted)");">
                         @MoneyFormatter.FormatSigned(balance.NetBalanceCents)
                     </span>
-                    <a href="@($"/eindrekening/{balance.PersonId}")" class="btn btn-secondary btn-icon" style="margin-left:8px;" title="Eindrekening bekijken">
-                        <Icon Name="receipt" Size="16" />
-                    </a>
-                </div>
+                    <Icon Name="chevron-right" Size="18" />
+                </a>
             }
         </div>
     </div>
