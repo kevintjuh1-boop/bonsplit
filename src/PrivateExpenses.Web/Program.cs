@@ -13,6 +13,7 @@ using PrivateExpenses.Infrastructure.Persistence;
 using PrivateExpenses.Infrastructure.Persistence.Seed;
 using PrivateExpenses.Web.Components;
 using PrivateExpenses.Web.Services;
+using Radzen;
 
 // Dutch date/number formatting everywhere (section 74) — money itself always goes through
 // MoneyFormatter regardless of thread culture, but dates and any other culture-aware display should
@@ -56,6 +57,7 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddApplication();
 builder.Services.AddScoped<ViewAsState>();
 builder.Services.AddScoped<CurrentPersonState>();
+builder.Services.AddRadzenComponents();
 
 var app = builder.Build();
 

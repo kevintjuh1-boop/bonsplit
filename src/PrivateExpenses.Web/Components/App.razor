@@ -21,6 +21,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+    <RadzenTheme Theme="standard" />
+    <!-- Radzen's theme must load before this app's own stylesheet — it sets a decorative background
+         image on <body> that this app never wants, and app.css's own `background: var(--color-bg)`
+         shorthand (loaded after) implicitly resets background-image back to none by cascade order. -->
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["PrivateExpenses.Web.styles.css"]" />
     <ImportMap />
@@ -31,6 +35,7 @@
     <Routes @rendermode="InteractiveServer" />
     <ReconnectModal />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="_content/Radzen.Blazor/Radzen.Blazor.js?v=@(typeof(Radzen.Colors).Assembly.GetName().Version)"></script>
 </body>
 
 </html>
