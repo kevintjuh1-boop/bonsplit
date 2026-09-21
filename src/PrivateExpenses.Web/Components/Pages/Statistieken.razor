@@ -1,0 +1,237 @@
+@page "/statistieken"
+@using System.Globalization
+@inject IExpenseService ExpenseService
+
+<PageTitle>Statistieken</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1 class="page-title">Statistieken</h1>
+        <p class="page-subtitle">Uitgaven per maand, over tijd</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <LoadingSpinner />
+}
+else if (_allMonths.Count == 0)
+{
+    <div class="card">
+        <EmptyState IconName="scale" Title="Nog geen gegevens" Description="Zodra er uitgaven zijn, verschijnt hier de trend per maand." />
+    </div>
+}
+else
+{
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        @foreach (var option in RangeOptions)
+        {
+            <button type="button" class="pill-filter @(_filter == option.Filter ? "active" : "")" @onclick="() => SetFilter(option.Filter)">
+                @option.Label
+            </button>
+        }
+    </div>
+
+    <div class="grid grid-stats" style="margin-bottom:16px;">
+        <div class="stat-tile">
+            <span class="stat-tile-label">Totaal deze periode</span>
+            <span class="stat-tile-value">@MoneyFormatter.Format(FilteredMonths.Sum(m => m.TotalCents))</span>
+        </div>
+        <div class="stat-tile">
+            <span class="stat-tile-label">Gemiddeld per maand</span>
+            <span class="stat-tile-value">@MoneyFormatter.Format(AverageMonthlyCents)</span>
+        </div>
+    </div>
+
+    <div class="card card-padded" style="margin-bottom:20px;">
+        <div class="chart-wrap">
+            <svg viewBox="0 0 @ChartWidth @ChartHeight" preserveAspectRatio="none" style="width:100%;height:240px;display:block;">
+                @foreach (var tick in GridlineTicks)
+                {
+                    var y = PlotTop + PlotHeight - (tick / (double)NiceMaxCents * PlotHeight);
+                    <line x1="@Inv(LeftPadding)" y1="@Inv(y)" x2="@Inv(ChartWidth - RightPadding)" y2="@Inv(y)" stroke="var(--color-border)" stroke-width="1" />
+                    @SvgText(LeftPadding - 8, y + 4, "end", FormatAxisEuros(tick))
+                }
+
+                @for (var i = 0; i < FilteredMonths.Count; i++)
+                {
+                    var month = FilteredMonths[i];
+                    var barX = LeftPadding + i * BandWidth + (BandWidth - BarWidth) / 2;
+                    var barHeight = NiceMaxCents == 0 ? 0 : Math.Max(0, month.TotalCents) / (double)NiceMaxCents * PlotHeight;
+                    var barY = PlotTop + PlotHeight - barHeight;
+                    var isHovered = _hoveredIndex == i;
+                    var index = i;
+
+                    <rect x="@Inv(barX)" y="@Inv(barY)" width="@Inv(BarWidth)" height="@Inv(barHeight)" rx="4"
+                          fill="@(isHovered ? "var(--color-primary-hover)" : "var(--color-primary)")"
+                          @onmouseenter="() => _hoveredIndex = index" @onmouseleave="() => _hoveredIndex = null" style="cursor:pointer;" />
+                    <rect x="@Inv(barX)" y="@Inv((double)PlotTop)" width="@Inv(BarWidth)" height="@Inv((double)PlotHeight)" fill="transparent"
+                          @onmouseenter="() => _hoveredIndex = index" @onmouseleave="() => _hoveredIndex = null" style="cursor:pointer;" />
+
+                    @if (ShouldShowLabel(i))
+                    {
+                        @SvgText(barX + BarWidth / 2, ChartHeight - 6, "middle", month.MonthStart.ToString("MMM", MoneyFormatter.DutchCulture))
+                    }
+                }
+            </svg>
+
+            @if (_hoveredIndex is { } hoveredIndex)
+            {
+                var hoveredMonth = FilteredMonths[hoveredIndex];
+                var leftPercent = (LeftPadding + hoveredIndex * BandWidth + BandWidth / 2) / ChartWidth * 100;
+                <div class="chart-tooltip" style="left:@(Inv(leftPercent))%;">
+                    <span style="font-weight:700;">@MoneyFormatter.Format(hoveredMonth.TotalCents)</span>
+                    <span class="text-muted" style="text-transform:capitalize;"> · @hoveredMonth.MonthStart.ToString("MMMM yyyy", MoneyFormatter.DutchCulture)</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="card card-padded">
+        <div class="card-header"><span class="card-title">Per maand</span></div>
+        <div class="stack" style="gap:0;">
+            @foreach (var month in Enumerable.Reverse(FilteredMonths))
+            {
+                <div class="list-row">
+                    <span class="list-row-main list-row-title" style="text-transform:capitalize;">@month.MonthStart.ToString("MMMM yyyy", MoneyFormatter.DutchCulture)</span>
+                    <span class="list-row-amount">@MoneyFormatter.Format(month.TotalCents)</span>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .chart-wrap {
+        position: relative;
+    }
+
+    .chart-tooltip {
+        position: absolute;
+        top: -4px;
+        transform: translate(-50%, -100%);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border-strong);
+        border-radius: var(--radius-sm);
+        padding: 6px 10px;
+        font-size: 13px;
+        white-space: nowrap;
+        box-shadow: 0 2px 8px rgba(0,0,0,.12);
+        pointer-events: none;
+        z-index: 2;
+    }
+</style>
+
+@code {
+    private const int ChartWidth = 700;
+    private const int ChartHeight = 220;
+    private const int LeftPadding = 48;
+    private const int RightPadding = 8;
+    private const int PlotTop = 8;
+    private const int PlotHeight = ChartHeight - PlotTop - 28;
+
+    private enum RangeFilter { All, ThisYear, Last12Months, Last6Months }
+
+    private static readonly (RangeFilter Filter, string Label)[] RangeOptions =
+    [
+        (RangeFilter.All, "Alles"),
+        (RangeFilter.ThisYear, "Dit jaar"),
+        (RangeFilter.Last12Months, "Laatste 12 maanden"),
+        (RangeFilter.Last6Months, "Laatste 6 maanden"),
+    ];
+
+    private bool _loading = true;
+    private List<MonthlyTotalDto> _allMonths = [];
+    private RangeFilter _filter = RangeFilter.All;
+    private int? _hoveredIndex;
+
+    private List<MonthlyTotalDto> FilteredMonths => _filter switch
+    {
+        RangeFilter.ThisYear => _allMonths.Where(m => m.MonthStart.Year == DateTime.Today.Year).ToList(),
+        RangeFilter.Last12Months => _allMonths.Where(m => m.MonthStart >= CurrentMonthStart.AddMonths(-11)).ToList(),
+        RangeFilter.Last6Months => _allMonths.Where(m => m.MonthStart >= CurrentMonthStart.AddMonths(-5)).ToList(),
+        _ => _allMonths,
+    };
+
+    private static DateOnly CurrentMonthStart => new(DateTime.Today.Year, DateTime.Today.Month, 1);
+
+    private long AverageMonthlyCents => FilteredMonths.Count == 0 ? 0 : FilteredMonths.Sum(m => m.TotalCents) / FilteredMonths.Count;
+
+    private long NiceMaxCents
+    {
+        get
+        {
+            var maxCents = FilteredMonths.Count == 0 ? 0 : FilteredMonths.Max(m => m.TotalCents);
+            if (maxCents <= 0)
+            {
+                return 10000;
+            }
+
+            var maxEuros = maxCents / 100.0;
+            var magnitude = Math.Pow(10, Math.Floor(Math.Log10(maxEuros)));
+            var normalized = maxEuros / magnitude;
+            var niceNormalized = normalized switch
+            {
+                <= 1 => 1,
+                <= 2 => 2,
+                <= 5 => 5,
+                _ => 10,
+            };
+
+            return (long)(niceNormalized * magnitude * 100);
+        }
+    }
+
+    private IEnumerable<long> GridlineTicks
+    {
+        get
+        {
+            var max = NiceMaxCents;
+            yield return 0;
+            yield return max / 2;
+            yield return max;
+        }
+    }
+
+    private double BandWidth => FilteredMonths.Count == 0 ? 0 : (ChartWidth - LeftPadding - RightPadding) / (double)FilteredMonths.Count;
+    private double BarWidth => Math.Min(24, BandWidth * 0.6);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _allMonths = await ExpenseService.GetMonthlyTotalsAsync();
+        _loading = false;
+    }
+
+    private void SetFilter(RangeFilter filter)
+    {
+        _filter = filter;
+        _hoveredIndex = null;
+    }
+
+    private bool ShouldShowLabel(int index)
+    {
+        var count = FilteredMonths.Count;
+        if (count <= 12)
+        {
+            return true;
+        }
+
+        var step = (int)Math.Ceiling(count / 12.0);
+        return index % step == 0 || index == count - 1;
+    }
+
+    private static string FormatAxisEuros(long cents) =>
+        cents == 0 ? "€0" : $"€{cents / 100:N0}".Replace(",", ".");
+
+    // SVG numeric attributes require a period decimal separator — this app defaults the whole
+    // thread's culture to nl-NL (comma decimals), which would otherwise silently break every
+    // fractional coordinate and make the chart vanish.
+    private static string Inv(double value) => value.ToString(CultureInfo.InvariantCulture);
+
+    // Razor reserves the bare <text> tag as its own markup-transition syntax and refuses attributes
+    // on it, even for the unrelated SVG element of the same name — building it as a MarkupString
+    // sidesteps the parser conflict. The only interpolated content is server-formatted numbers/dates,
+    // never free-text user input, so HTML-encoding it is a defensive habit rather than a real risk.
+    private static MarkupString SvgText(double x, double y, string anchor, string content) =>
+        (MarkupString)$"<text x=\"{Inv(x)}\" y=\"{Inv(y)}\" text-anchor=\"{anchor}\" font-size=\"11\" fill=\"var(--color-text-muted)\">{System.Net.WebUtility.HtmlEncode(content)}</text>";
+}

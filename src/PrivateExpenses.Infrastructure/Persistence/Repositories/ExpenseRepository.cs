@@ -78,6 +78,23 @@ public class ExpenseRepository(PrivateExpensesDbContext context) : IExpenseRepos
         return sum ?? 0;
     }
 
+    public async Task<List<MonthlyTotalDto>> GetMonthlyTotalsAsync(CancellationToken cancellationToken = default)
+    {
+        // Grouped in memory rather than translated (e.g. via strftime) — this app's whole expense
+        // history is a few hundred rows at most, and it keeps the DateOnly.Year/Month grouping keys
+        // simple and provider-independent instead of leaning on SQLite date-string translation.
+        var rows = await context.Expenses.AsNoTracking()
+            .Where(e => !e.IsDeleted)
+            .Select(e => new { e.ExpenseDate, e.TotalCents })
+            .ToListAsync(cancellationToken);
+
+        return rows
+            .GroupBy(e => new DateOnly(e.ExpenseDate.Year, e.ExpenseDate.Month, 1))
+            .Select(g => new MonthlyTotalDto(g.Key, g.Sum(e => e.TotalCents)))
+            .OrderBy(x => x.MonthStart)
+            .ToList();
+    }
+
     public async Task<long> GetTotalSavedFromDiscountsAsync(DateOnly rangeStart, DateOnly rangeEndExclusive, CancellationToken cancellationToken = default)
     {
         var sum = await context.ExpenseItems

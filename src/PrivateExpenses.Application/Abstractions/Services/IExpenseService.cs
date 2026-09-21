@@ -9,6 +9,7 @@ public interface IExpenseService
     Task<List<ExpenseListItemDto>> GetRecentAsync(int count, CancellationToken cancellationToken = default);
     Task<long> GetMonthTotalCentsAsync(DateOnly monthStart, CancellationToken cancellationToken = default);
     Task<long> GetMonthSavingsCentsAsync(DateOnly monthStart, CancellationToken cancellationToken = default);
+    Task<List<MonthlyTotalDto>> GetMonthlyTotalsAsync(CancellationToken cancellationToken = default);
 
     Task<Guid> CreateAsync(CreateExpenseRequest request, CancellationToken cancellationToken = default);
     Task<Guid> CreateManualExpenseAsync(ManualExpenseRequest request, CancellationToken cancellationToken = default);

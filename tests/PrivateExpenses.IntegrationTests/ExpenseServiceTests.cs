@@ -435,6 +435,41 @@ public class ExpenseServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetMonthlyTotalsAsync_GroupsAcrossExpensesWithinAMonth_ExcludesDeletedExpenses()
+    {
+        await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Jumbo",
+            ExpenseDate = new DateOnly(2026, 3, 5),
+            TotalCents = 1000,
+            Items = [new ExpenseItemInput { Description = "Item", TotalCents = 1000, ParticipantPersonIdsInOrder = [_kevin.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 1000 }],
+        });
+        await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Albert Heijn",
+            ExpenseDate = new DateOnly(2026, 3, 20),
+            TotalCents = 500,
+            Items = [new ExpenseItemInput { Description = "Item", TotalCents = 500, ParticipantPersonIdsInOrder = [_kevin.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 500 }],
+        });
+        var deletedExpenseId = await _service.CreateAsync(new CreateExpenseRequest
+        {
+            MerchantName = "Verwijderd",
+            ExpenseDate = new DateOnly(2026, 3, 12),
+            TotalCents = 9999,
+            Items = [new ExpenseItemInput { Description = "Item", TotalCents = 9999, ParticipantPersonIdsInOrder = [_kevin.Id] }],
+            Payments = [new ExpensePaymentInput { PersonId = _kevin.Id, AmountCents = 9999 }],
+        });
+        await _service.SoftDeleteAsync(deletedExpenseId);
+
+        var totals = await _service.GetMonthlyTotalsAsync();
+
+        var march = Assert.Single(totals, t => t.MonthStart == new DateOnly(2026, 3, 1));
+        Assert.Equal(1500, march.TotalCents);
+    }
+
+    [Fact]
     public async Task CreateManualExpenseAsync_DoesNotNotifyAnyone()
     {
         await _service.CreateManualExpenseAsync(new ManualExpenseRequest

@@ -40,6 +40,12 @@ public class ExpenseService(IUnitOfWorkFactory unitOfWorkFactory) : IExpenseServ
         return await uow.Expenses.GetTotalSavedFromDiscountsAsync(monthStart, monthStart.AddMonths(1), cancellationToken);
     }
 
+    public async Task<List<MonthlyTotalDto>> GetMonthlyTotalsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var uow = await unitOfWorkFactory.CreateAsync(cancellationToken);
+        return await uow.Expenses.GetMonthlyTotalsAsync(cancellationToken);
+    }
+
     public async Task<Guid> CreateManualExpenseAsync(ManualExpenseRequest request, CancellationToken cancellationToken = default)
     {
         var item = new ExpenseItemInput

@@ -22,6 +22,10 @@ public interface IExpenseRepository
 
     Task<long> GetTotalCentsThisMonthAsync(DateOnly monthStart, DateOnly monthEndExclusive, CancellationToken cancellationToken = default);
 
+    /// <summary>Total spend per calendar month, across every non-deleted expense that has one —
+    /// the feed for the Statistieken page's monthly trend chart.</summary>
+    Task<List<MonthlyTotalDto>> GetMonthlyTotalsAsync(CancellationToken cancellationToken = default);
+
     /// <summary>Sum of all discount item lines (stored as negative cents) within the date range, across
     /// non-deleted expenses — returned as a positive amount representing money saved.</summary>
     Task<long> GetTotalSavedFromDiscountsAsync(DateOnly rangeStart, DateOnly rangeEndExclusive, CancellationToken cancellationToken = default);
